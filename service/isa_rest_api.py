@@ -4,6 +4,7 @@ from zipfile import ZipFile
 from werkzeug.utils import secure_filename
 from flask import Flask, Response, request, jsonify
 from api.io.alfie.isaJsonToTabWriter import IsajsonToIsatabWriter
+from api.io.alfie.isatabToJsonWriterV2 import IsatabToJsonWriterV2
 
 
 def allowed_file(filename):
@@ -52,7 +53,12 @@ def convert_to_isa_json():
             zip_path = os.path.join(temp_dir, filename)
             f.save(os.path.join(temp_dir, filename))
             with ZipFile(zip_path, 'r') as zip:
-                print(zip.namelist())
+                zip.extractall(temp_dir)
+                writer = IsatabToJsonWriterV2()
+                json_dir = os.path.join(temp_dir, "json")
+                os.mkdir(json_dir)
+                src_dir = os.path.join(temp_dir, zip.filelist[0].filename)
+                writer.parsingIsatab(src_dir, json_dir, False)
                 # extract ISArchive files
                 # check if they're .json or .txt
                 # run appropriate converter
