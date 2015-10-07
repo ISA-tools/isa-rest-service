@@ -1,10 +1,13 @@
 import os
 import uuid
+import glob
+import json
+import shutil
 from zipfile import ZipFile
 from werkzeug.utils import secure_filename
 from flask import Flask, Response, request, jsonify
-from api.io.alfie.isaJsonToTabWriter import IsajsonToIsatabWriter
-from api.io.alfie.isatabToJsonWriterV2 import IsatabToJsonWriterV2
+from isatools.io.isatab_to_json import IsatabToJsonWriter
+from isatools.io.json_to_isatab import JsonToIsatabWriter
 
 
 def allowed_file(filename):
@@ -24,7 +27,7 @@ def convert_to_isa_tab():
     response = Response(status=415)
     if request.mimetype == "application/json":
         json = request.get_json()
-        converter = IsajsonToIsatabWriter()
+        converter = JsonToIsatabWriter()
         # write the json to somewhere input_file
         json_dir = "tmp/json"  # Some temporary location for the JSON received
         tab_dir = "tmp/tab"   # Some temporary directory, need to zip it up
@@ -53,17 +56,24 @@ def convert_to_isa_json():
             zip_path = os.path.join(temp_dir, filename)
             f.save(os.path.join(temp_dir, filename))
             with ZipFile(zip_path, 'r') as zip:
-                zip.extractall(temp_dir)
-                writer = IsatabToJsonWriterV2()
-                json_dir = os.path.join(temp_dir, "json")
-                os.mkdir(json_dir)
-                src_dir = os.path.join(temp_dir, zip.filelist[0].filename)
-                writer.parsingIsatab(src_dir, json_dir, False)
                 # extract ISArchive files
-                # check if they're .json or .txt
-                # run appropriate converter
+                zip.extractall(temp_dir)
+                writer = IsatabToJsonWriter()
+                json_sub_dir = os.path.splitext(zip.filename)[0] + "-json"
+                json_dir = os.path.join(temp_dir, json_sub_dir)
+                os.mkdir(json_dir)
+                src_dir = os.path.normpath(os.path.join(temp_dir, zip.filelist[0].filename))
+                writer.parsingIsatab(src_dir, json_dir)
                 # zip and build response of converted stuff
-            response = Response(status=200)
+                # first clean up the junk expanded files
+                for f in glob.glob(json_sub_dir + "/*_expanded.json"):
+                    os.remove(f)
+                # return just the combined JSON
+                combined_json_file = os.path.join(json_dir, os.path.normpath(zip.filelist[0].filename) + ".json")
+                combined_json = json.load(open(combined_json_file))
+                # cleanup generated directories
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            response = jsonify(combined_json)
     return response
 
 
