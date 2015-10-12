@@ -6,8 +6,8 @@ import shutil
 from zipfile import ZipFile
 from werkzeug.utils import secure_filename
 from flask import Flask, Response, request, jsonify
-from isatools.io.isatab_to_json import IsatabToJsonWriter
-from isatools.io.json_to_isatab import JsonToIsatabWriter
+from isatools.convert.isatab_to_json import IsatabToJsonWriter
+from isatools.convert.json_to_isatab import JsonToIsatabWriter
 
 
 def allowed_file(filename):
