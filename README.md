@@ -20,7 +20,7 @@ Needs to import isatools package from [isa-api project](https://github.com/ISA-t
 ### `POST /isatools/convert/json-to-isatab`
 | Consumes              | Produces              | Description    |
 | --------------------- |:---------------------:| -------------- |
-| `application/json`    | `multipart/form-data` |  Takes ISA-JSON content, converts and returns a ISArchive containing ISA-Tab `.txt` files. Returns 200 OK if succeeded. |
+| `application/json`    | `application/zip`     |  Takes ISA-JSON content, converts and returns a ISArchive containing ISA-Tab `.txt` files. Returns 200 OK if succeeded. |
 
 ## Create and populate and ISA object, and then get an ISA document
 ### `POST /isatools/create/`
