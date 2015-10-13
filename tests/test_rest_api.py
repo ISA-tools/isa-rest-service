@@ -39,6 +39,11 @@ class TestIsaApi(unittest.TestCase):
                          headers={'Content-Type': 'application/zip'})
         assert(response.status_code == 415)
 
+    def test_create_investigation(self):
+        response = self.app.post(path='/create/investigation')
+        assert(response.status_code == 201)
+        print(response.data)
+
 
 if __name__ == '__main__':
     unittest.main()
