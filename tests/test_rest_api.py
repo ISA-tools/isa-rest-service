@@ -15,8 +15,10 @@ class TestIsaApi(unittest.TestCase):
         pass
 
     def test_convert_to_isajson(self):
-        response = self.app.post(path='/convert/isatab-to-json', data={'file': (self.fileobj, 'BII-I-1.zip')},
-                                 headers={'Content-Type': 'multipart/form-data'})
+        content = self.fileobj.read()
+        content_str = str(content)
+        response = self.app.post(path='/convert/isatab-to-json', data=content_str,
+                                 headers={'Content-Type': 'application/zip'})
         assert(response.status_code == 200)
         assert(response.mimetype == 'application/json')
         # TODO Validate what's returned is correct based on what we sent
