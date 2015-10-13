@@ -9,7 +9,7 @@ Needs to import isatools package from [isa-api project](https://github.com/ISA-t
 ### `POST /isatools/convert/isatab-to-json`
 | Consumes              | Produces           | Description    |
 | --------------------- |:------------------:| -------------- |
-| `multipart/form-data` | `application/json` |  Takes a ISArchive zip file containing ISA-Tab `.txt` files, converts and returns a single ISA-JSON. Returns 200 OK if succeeded. |
+| `application/zip`    | `application/json` |  Takes a ISArchive zip file containing ISA-Tab `.txt` files, converts and returns a single ISA-JSON. Returns 200 OK if succeeded. |
 
 ## Convert ISA-JSON to ISA-Tab
 ### `POST /isatools/convert/json-to-isatab`
