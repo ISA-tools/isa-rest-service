@@ -3,7 +3,7 @@ import uuid
 import glob
 import json
 import shutil
-from . import app
+from config import ALLOWED_EXTENSIONS, UPLOAD_FOLDER
 from zipfile import ZipFile
 from werkzeug.utils import secure_filename
 from flask import Response, request, jsonify
@@ -14,30 +14,40 @@ from isatools.convert.json_to_isatab import JsonToIsatabWriter
 
 def allowed_file(filename):
     return '.' in filename and \
-           filename.rsplit('.', 1)[1] in app.config['ALLOWED_EXTENSIONS']
+           filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
 
+def zipdir(path, ziph):
+    # ziph is zipfile handle
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            ziph.write(os.path.join(root, file))
 
 class ConvertJsonToIsaTab(Resource):
 
     def post(self):
         response = Response(status=415)
         if request.mimetype == "application/json":
-            json = request.get_json()
+            json_data = request.get_data()
             converter = JsonToIsatabWriter()
             # write the json to somewhere input_file
             unique_filename = str(uuid.uuid4()) + ".json"
-            ul_dir = app.config['UPLOAD_FOLDER']
+            ul_dir = UPLOAD_FOLDER
             json_file_path = os.path.join(ul_dir, unique_filename)
-            fd = os.open(json_file_path, os.O_CREATE | os. os.O_RDWR)
-            os.write(fd, json)
+            # ensure this doesn't fail because of permissions on directory
+            fd = os.open(json_file_path, os.O_CREAT | os.O_RDWR)
+            os.write(fd, json_data)
             tab_dir = os.path.join(ul_dir, unique_filename)
+            # again if this fails, it's probably a permissions problem
             os.mkdir(tab_dir)
             # Use converter to generate tab files
             converter.parsingJsonCombinedFile(json_file_path, tab_dir)
-            # Zip and send back genereated tab directory
-
-            # Right now this just echos back the json received
-            return jsonify(json)
+            # Zip and send back generated tab directory
+            zipf = ZipFile(unique_filename + '.zip', 'w')
+            zipdir(tab_dir, zipf)
+            zipf.close()
+            # Send back the new zip file
+            # make_response(zipf)
+            return response
         else:
             return response
 
@@ -52,7 +62,7 @@ class ConvertIsaTabToJson(Resource):
             if f and allowed_file(f.filename):
                 filename = secure_filename(f.filename)  # prevent malicious filenames
                 unique_filename = str(uuid.uuid4())
-                ul_dir = app.config['UPLOAD_FOLDER']
+                ul_dir = UPLOAD_FOLDER
                 temp_dir = os.path.join(ul_dir, unique_filename)
                 os.mkdir(temp_dir)
                 zip_path = os.path.join(temp_dir, filename)
@@ -75,7 +85,7 @@ class ConvertIsaTabToJson(Resource):
                     combined_json = json.load(open(combined_json_file))
                     # cleanup generated directories
                     shutil.rmtree(temp_dir, ignore_errors=True)
-                response = jsonify(combined_json)
+                response = jsonify(combined_json), 200
         return response
 
 
