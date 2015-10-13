@@ -3,12 +3,11 @@ import uuid
 import glob
 import json
 import shutil
-import StringIO
 from config import ALLOWED_EXTENSIONS, UPLOAD_FOLDER
 from zipfile import ZipFile
-from werkzeug.utils import secure_filename
-from flask import Response, request, jsonify, send_file
+from flask import Response, request, jsonify
 from flask_restful import Resource
+from flask_restful_swagger import swagger
 from isatools.convert.isatab_to_json import IsatabToJsonWriter
 from isatools.convert.json_to_isatab import JsonToIsatabWriter
 
@@ -17,14 +16,39 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
 
+
 def zipdir(path, ziph):
     # ziph is zipfile handle
     for root, dirs, files in os.walk(path):
         for file in files:
             ziph.write(os.path.join(root, file))
 
-class ConvertJsonToIsaTab(Resource):
 
+class ConvertJsonToIsaTab(Resource):
+    """Convert ISA-JSON to ISA-Tab archive"""
+    @swagger.operation(
+        notes='Converts ISA-JSON to and ISArchive ZIP file containing a collection of ISA-Tab files',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a valid ISA-JSON (single file), convert and return a valid ISArchive.",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "JSON",
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted ISA content should be in the returned ISArchive ZIP."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
     def post(self):
         response = Response(status=415)
         if request.mimetype == "application/json":
@@ -64,6 +88,30 @@ class ConvertJsonToIsaTab(Resource):
 
 class ConvertIsaTabToJson(Resource):
 
+    """Convert to ISA-Tab archive to ISA-JSON"""
+    @swagger.operation(
+        notes='Converts an ISArchive ZIP file containing a collection of ISA-Tab files to ISA-JSON (single combined output)',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a valid ISArchive ZIP file, convert and return a valid ISA-JSON (single file).",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISArchive (ZIP)",
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted ISA content should be in the returned JSON."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
     def post(self):
         response = Response(status=415)
         if request.mimetype == "application/zip":
