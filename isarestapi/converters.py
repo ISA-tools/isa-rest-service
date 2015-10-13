@@ -8,8 +8,8 @@ from zipfile import ZipFile
 from flask import Response, request, jsonify
 from flask_restful import Resource
 from flask_restful_swagger import swagger
-from isatools.convert.isatab_to_json import IsatabToJsonWriter
-from isatools.convert.json_to_isatab import JsonToIsatabWriter
+from isatools.convert.isatab2json import IsatabToJsonWriter
+from isatools.convert.json2isatab import JsonToIsatabWriter
 
 
 def allowed_file(filename):
