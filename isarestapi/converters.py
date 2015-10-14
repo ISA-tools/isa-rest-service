@@ -10,7 +10,7 @@ from flask_restful import Resource
 from flask_restful_swagger import swagger
 from isatools.convert.isatab2json import IsatabToJsonWriter
 from isatools.convert.json2isatab import JsonToIsatabWriter
-# from isatools.convert.isatab2cedar import ISATab2CEDAR
+from isatools.convert.isatab2cedar import ISATab2CEDAR
 
 
 def allowed_file(filename):
@@ -149,66 +149,62 @@ class ConvertIsaTabToJson(Resource):
             response = jsonify(combined_json)
         return response
 
-# class ConvertIsaTabToCEDAR(Resource):
-#
-#     """Convert to ISA-Tab archive to CEDAR-JSON"""
-#     @swagger.operation(
-#         notes='Converts an ISArchive ZIP file containing a collection of ISA-Tab files to CEDAR-JSON',
-#         parameters=[
-#             {
-#                 "name": "body",
-#                 "description": "Given a valid ISArchive ZIP file, convert and return a valid ISA-JSON (single file).",
-#                 "required": True,
-#                 "allowMultiple": False,
-#                 "dataType": "ISArchive (ZIP)",
-#                 "paramType": "body"
-#             }
-#         ],
-#         responseMessages=[
-#             {
-#                 "code": 200,
-#                 "message": "OK. The converted ISA content should be in the returned CEDAR-compliant JSON."
-#             },
-#             {
-#                 "code": 415,
-#                 "message": "Media not supported. Unexpected MIME type sent."
-#             }
-#         ]
-#     )
-#     def post(self):
-#         response = Response(status=415)
-#         if request.mimetype == "application/zip":
-#             # Unzip the file and figure out if it's an XML archive or ISArchive
-#             # Get the data out of the request and write it to a temp file
-#             content = request.data
-#             unique_filename = str(uuid.uuid4())
-#             ul_dir = UPLOAD_FOLDER
-#             temp_dir = os.path.join(ul_dir, unique_filename)
-#             os.mkdir(temp_dir)
-#             f = open(os.path.join(temp_dir, unique_filename + '.zip'), 'w')
-#             f.write(content)
-#             f.close()
-#             zip_path = os.path.join(temp_dir, unique_filename + '.zip')
-#             with ZipFile(zip_path, 'r') as z:
-#                 # extract ISArchive files
-#                 z.extractall(temp_dir)
-#                 isa2cedar = ISATab2CEDAR()
-#                 json_sub_dir = os.path.splitext(z.filename)[0] + "-json"
-#                 json_dir = os.path.join(temp_dir, json_sub_dir)
-#                 os.mkdir(json_dir)
-#                 src_dir = os.path.normpath(os.path.join(temp_dir, z.filelist[0].filename))
-#                 isa2cedar.createCEDARjson( , src_dir, json_dir, False) # Param 3, expose in API
-#                 # zip and build response of converted stuff
-#                 # first clean up the junk expanded files
-#                 for f in glob.glob(json_sub_dir + "/*_expanded.json"):
-#                     os.remove(f)
-#                 # return just the combined JSON
-#                 combined_json_file = os.path.join(json_dir, os.path.normpath(z.filelist[0].filename) + ".json")
-#                 combined_json = json.load(open(combined_json_file))
-#                 # cleanup generated directories
-#                 shutil.rmtree(temp_dir, ignore_errors=True)
-#             response = jsonify(combined_json)
-#         return response
+class ConvertIsaTabToCEDAR(Resource):
+
+    """Convert to ISA-Tab archive to CEDAR-JSON"""
+    @swagger.operation(
+        notes='Converts an ISArchive ZIP file containing a collection of ISA-Tab files to CEDAR-JSON',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a valid ISArchive ZIP file, convert and return a valid ISA-JSON (single file).",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISArchive (ZIP)",
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted ISA content should be in the returned CEDAR-compliant JSON."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=415)
+        if request.mimetype == "application/zip":
+            # Unzip the file and figure out if it's an XML archive or ISArchive
+            # Get the data out of the request and write it to a temp file
+            content = request.data
+            unique_filename = str(uuid.uuid4())
+            ul_dir = UPLOAD_FOLDER
+            temp_dir = os.path.join(ul_dir, unique_filename)
+            os.mkdir(temp_dir)
+            f = open(os.path.join(temp_dir, unique_filename + '.zip'), 'w')
+            f.write(content)
+            f.close()
+            zip_path = os.path.join(temp_dir, unique_filename + '.zip')
+            with ZipFile(zip_path, 'r') as z:
+                # extract ISArchive files
+                z.extractall(temp_dir)
+                isa2cedar = ISATab2CEDAR()
+                json_sub_dir = os.path.splitext(z.filename)[0] + "-json"
+                json_dir = os.path.join(temp_dir, json_sub_dir)
+                os.mkdir(json_dir)
+                src_dir = os.path.normpath(os.path.join(temp_dir, z.filelist[0].filename))
+                isa2cedar.createCEDARjson(src_dir, json_dir, True)  # Param 3 (using inv identifier or not,expose in API
+                # return just the combined JSON
+                combined_json_file = os.path.join(json_dir, os.path.normpath(z.filelist[0].filename) + ".json")
+                combined_json = json.load(open(combined_json_file))
+                # cleanup generated directories
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            response = jsonify(combined_json)
+        return response
 
 
 

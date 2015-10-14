@@ -22,14 +22,23 @@ class TestIsaApi(unittest.TestCase):
         assert(response.status_code == 200)
         assert(response.mimetype == 'application/json')
         # TODO Validate what's returned is correct based on what we sent
-        print("Received " + str(len(response.data)) + " of JSON, OK")
+        print("Received " + str(len(response.data)) + " of JSON, 200 OK")
 
     def test_convert_to_isatab(self):
         response = self.app.post(path='/convert/json-to-isatab', data=self.json, headers={'Content-Type': 'application/json'})
         assert(response.status_code == 200)
         assert(response.mimetype == 'application/zip')
         # TODO Validate what's returned is correct based on what we sent
-        print("Received " + str(len(response.data)) + " of ZIP content, OK")
+        print("Received " + str(len(response.data)) + " of ZIP content, 200 OK")
+
+    def test_convert_to_cedar(self):
+        content = self.fileobj.read()
+        content_str = str(content)
+        response = self.app.post(path='/convert/isatab-to-cedar', data=content_str, headers={'Content-Type': 'application/zip'})
+        assert(response.status_code == 200)
+        assert(response.mimetype == 'application/json')
+        # TODO Validate what's returned is correct based on what we sent
+        print("Received " + str(len(response.data)) + " of ZIP content, 200 OK")
 
     def test_unsupported_mimetype(self):
         response = self.app.post(path='/convert/isatab-to-json', data={'file': (self.fileobj, 'BII-I-1.zip')},
