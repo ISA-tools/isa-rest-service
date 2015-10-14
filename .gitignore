@@ -55,3 +55,19 @@ docs/_build/
 
 # PyBuilder
 target/
+
+*.swp
+*.swo
+*.swn
+*.swm
+keys.sh
+static/.webassets-cache/
+static/gen
+*.psd
+.DS_Store
+cffi/
+logs/*
+*.pem
+ngrok
+*.rdb
+*.pid

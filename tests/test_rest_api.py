@@ -1,12 +1,12 @@
 import unittest
 import os
-from isarestapi import run
+from isarestapi import rest_api
 
 
 class TestIsaApi(unittest.TestCase):
 
     def setUp(self):
-        self.app = run.app.test_client()
+        self.app = rest_api.app.test_client()
         self.fileobj = open(os.path.join(os.path.dirname(__file__), 'data/BII-I-1.zip'), 'rb')
         json_fileobj = open(os.path.join(os.path.dirname(__file__), 'data/BII-I-1.json'), 'rb')
         self.json = json_fileobj.read()
@@ -33,7 +33,7 @@ class TestIsaApi(unittest.TestCase):
 
     def test_unsupported_mimetype(self):
         response = self.app.post(path='/convert/isatab-to-json', data={'file': (self.fileobj, 'BII-I-1.zip')},
-                                 headers={'Content-Type': 'application/zip'})
+                                 headers={'Content-Type': 'application/json'})
         assert(response.status_code == 415)
         response = self.app.post(path='/convert/json-to-isatab', data={'file': (self.fileobj, 'BII-I-1.zip')},
                          headers={'Content-Type': 'application/zip'})
