@@ -158,11 +158,12 @@ class ConvertIsaTabToCEDAR(Resource):
 
     """Convert to ISA-Tab archive to CEDAR-JSON"""
     @swagger.operation(
-        notes='Converts an ISArchive ZIP file containing a collection of ISA-Tab files to CEDAR-JSON',
+        notes='Converts an ISArchive ZIP file containing a collection of ISA-Tab files to CEDAR-JSON (single combined '
+              'output)',
         parameters=[
             {
                 "name": "body",
-                "description": "Given a valid ISArchive ZIP file, convert and return a valid ISA-JSON (single file).",
+                "description": "Given a valid ISArchive ZIP file, convert and return a valid CEDAR-JSON (single file).",
                 "required": True,
                 "allowMultiple": False,
                 "dataType": "ISArchive (ZIP)",
@@ -211,7 +212,6 @@ class ConvertIsaTabToCEDAR(Resource):
                 shutil.rmtree(temp_dir, ignore_errors=True)
             response = jsonify(combined_json)
         return response
-
 
 
 class ConvertSraToIsaTab:
