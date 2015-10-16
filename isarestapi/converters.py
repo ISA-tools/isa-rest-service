@@ -66,7 +66,7 @@ class ConvertJsonToIsaTab(Resource):
             # ensure this doesn't fail because of permissions on directory
             fd = os.open(json_file_path, os.O_CREAT | os.O_RDWR)
             os.write(fd, json_data)
-            tab_dir = os.path.join(ul_dir, unique_id) # remove extension
+            tab_dir = os.path.join(ul_dir, unique_id)  # remove extension
             # again if this fails, it's probably a permissions problem
             os.mkdir(tab_dir)
             # Use converter to generate tab files
@@ -83,6 +83,7 @@ class ConvertJsonToIsaTab(Resource):
             response.headers.add('content-length', str(zipf_data_length))
             response.mimetype = "application/zip"
             response.status_code = 200
+            shutil.rmtree(tab_dir, ignore_errors=True)
             shutil.rmtree(temp_dir, ignore_errors=True)
             return response
         else:
