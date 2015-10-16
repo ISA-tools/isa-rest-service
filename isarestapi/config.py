@@ -10,7 +10,7 @@ STATIC_FOLDER = os.path.join(ROOT_PATH, 'static')
 TEMPLATE_FOLDER = os.path.join(ROOT_PATH, 'templates')
 # CSRF_ENABLED = True
 
-UPLOAD_FOLDER = os.path.join(ROOT_PATH, 'tests/tmp')
+UPLOAD_FOLDER = os.path.join(ROOT_PATH, 'tests/tmp')  # PUT THIS SOMEWHERE SENSIBLE
 ALLOWED_EXTENSIONS = {'zip'}
 
 if ENV == 'dev':
