@@ -59,7 +59,10 @@ class ConvertJsonToIsaTab(Resource):
             unique_id = str(uuid.uuid4())
             unique_filename = unique_id + ".json"
             ul_dir = UPLOAD_FOLDER
-            json_file_path = os.path.join(ul_dir, unique_filename)
+            ul_dir = UPLOAD_FOLDER
+            temp_dir = os.path.join(ul_dir, unique_filename)
+            os.mkdir(temp_dir)
+            json_file_path = os.path.join(temp_dir, unique_filename)
             # ensure this doesn't fail because of permissions on directory
             fd = os.open(json_file_path, os.O_CREAT | os.O_RDWR)
             os.write(fd, json_data)
@@ -69,10 +72,10 @@ class ConvertJsonToIsaTab(Resource):
             # Use converter to generate tab files
             converter.parsingJsonCombinedFile(json_file_path, tab_dir)
             # Zip and send back generated tab directory
-            zipf = ZipFile(os.path.join(ul_dir, unique_id + '.zip'), 'w')
+            zipf = ZipFile(os.path.join(temp_dir, unique_id + '.zip'), 'w')
             zipdir(tab_dir, zipf)
             zipf.close()
-            fd = open(os.path.join(ul_dir, unique_id + '.zip'), 'r')
+            fd = open(os.path.join(temp_dir, unique_id + '.zip'), 'r')
             zipf_data = fd.read()
             zipf_data_length = len(zipf_data)
             fd.close()
@@ -80,6 +83,7 @@ class ConvertJsonToIsaTab(Resource):
             response.headers.add('content-length', str(zipf_data_length))
             response.mimetype = "application/zip"
             response.status_code = 200
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return response
         else:
             return response
@@ -161,6 +165,7 @@ class ConvertIsaTabToCEDAR(Resource):
                 "required": True,
                 "allowMultiple": False,
                 "dataType": "ISArchive (ZIP)",
+                "supportedContentTypes": ['application/zip'],
                 "paramType": "body"
             }
         ],
