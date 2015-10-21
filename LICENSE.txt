@@ -89,11 +89,11 @@ Initial Developer may designate portions of the Covered Code as Multiple-License
 The term “External Deployment” means the use, distribution, or communication of the Original Code or Modifications in any way such that the Original Code or Modifications may be used by anyone other than You, whether those works are distributed or communicated to those persons or made available as an application intended for use over a network. As an express condition for the grants of license hereunder, You must treat any External Deployment by You of the Original Code or Modifications as a distribution under section 3.1 and make Source Code available under Section 3.2.
 
 EXHIBIT A. CPAL version 1.0
-“The contents of this file are subject to the CPAL version 1.0 (the “License”); you may not use this file except in compliance with the License. You may obtain a copy of the License at https://github.com/ISA-tools/isa-api/blob/master/LICENSE.txt. The License is based on the Mozilla Public License version 1.1 but Sections 14 and 15 have been added to cover use of software over a computer network and provide for limited attribution for the Original Developer. In addition, Exhibit A has been modified to be consistent with Exhibit B.
+“The contents of this file are subject to the CPAL version 1.0 (the “License”); you may not use this file except in compliance with the License. You may obtain a copy of the License at https://github.com/ISA-tools/isa-rest-api/blob/master/LICENSE.txt. The License is based on the Mozilla Public License version 1.1 but Sections 14 and 15 have been added to cover use of software over a computer network and provide for limited attribution for the Original Developer. In addition, Exhibit A has been modified to be consistent with Exhibit B.
 
 Software distributed under the License is distributed on an “AS IS” basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the License for the specific language governing rights and limitations under the License.
 
-The Original Code is ISA-API.
+The Original Code is ISA REST API.
 The Original Developer is the Initial Developer. The Initial Developer of the Original Code is the ISA Team (Alejandra Gonzalez-Beltran, alejandra.gonzalez.beltran@gmail.com; David Johnson, djcomlab@gmail.com; Philippe Rocca-Serra, proccaserra@gmail.com; Susanna-Assunta Sansone, sa.sansone@gmail.com; http://www.isa-tools.org). All portions of the code written by the ISA Team are Copyright (c) 2015 ISA Team. All Rights Reserved.
 
 EXHIBIT B. Attribution Information
