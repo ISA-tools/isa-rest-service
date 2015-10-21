@@ -6,7 +6,7 @@ Needs to import isatools package from [isa-api project](https://github.com/ISA-t
 
 Basically to test directly, make sure you've got the right prereqs installed:
 
-`pip install -r files/requirements.txt`
+`pip install -r requirements.txt`
 in `isarestapi/config.py` set `UPLOAD_FOLDER` to somewhere sensible (e.g. `/tmp/` - it stores just temporary files for
 the conversion.
 
