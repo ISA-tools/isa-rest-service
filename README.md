@@ -18,6 +18,11 @@ then:
 
 or load into PyCharm and play with the test_rest_api.py tests
 
+
+# License
+
+[CPAL License](https://raw.githubusercontent.com/ISA-tools/isa-rest-api/master/LICENSE.txt)
+
 # Usage
 ## Convert ISArchive (ISA-Tab) archive to ISA-JSON
 ### `POST /convert/isatab-to-json`
