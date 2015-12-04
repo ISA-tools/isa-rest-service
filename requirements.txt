@@ -2,5 +2,4 @@ flask
 flask_restful
 flask_restful_swagger
 warlock
-functools32
--e git+https://{uname}:[password]@github.com/ISA-tools/isa-api.git#egg=isatools_api-dev
+-e git+https://github.com/ISA-tools/isa-api.git#egg=isatools
