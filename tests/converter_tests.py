@@ -34,10 +34,6 @@ class JsonToTabConverterTests(BaseConverterTestCase):
     def test_convert(self):
         response = self.app.post(path='/convert/json-to-isatab', data=self.test_data_json,
                                  headers={'Content-Type': 'application/json'})
-        data = response.get_data()
-        fd = open('isatab.zip', 'w')
-        fd.write(data)
-        fd.close()
         assert(response.status_code == 200)
         assert(response.mimetype == 'application/zip')
 
@@ -52,10 +48,6 @@ class TabToSraXmlConverterTests(BaseConverterTestCase):
     def test_convert(self):
         response = self.app.post(path='/convert/isatab-to-sra', data=self.test_data_zip,
                                  headers={'Content-Type': 'application/zip'})
-        data = response.get_data()
-        fd = open('sra.zip', 'w')
-        fd.write(data)
-        fd.close()
         assert(response.status_code == 200)
         assert(response.mimetype == 'application/zip')
 

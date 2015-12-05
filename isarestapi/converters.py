@@ -22,6 +22,8 @@ def _zipdir(path, ziph):
 
 def _create_temp_dir():
     unique_id = str(uuid.uuid4())
+    if not os.path.exists(UPLOAD_FOLDER):
+        raise IOError("UPLOAD_FOLDER does not exist in file system or is not read/write-able")
     ul_dir = os.path.join(UPLOAD_FOLDER, unique_id)
     os.mkdir(ul_dir)
     if os.path.exists(ul_dir):
@@ -72,36 +74,46 @@ class ConvertJsonToIsaTab(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == "application/json":
-            # Create temporary directory
-            tmp_dir = _create_temp_dir()
+        response = Response(status=500)
+        # Create temporary directory
+        tmp_dir = _create_temp_dir()
+        tmp_file = tmp_dir + '.zip'
+        try:
             if tmp_dir is None:
-                return Response(500)
-            # Write request data to file
-            file_path = _write_request_data(request, tmp_dir, "isa.json")
-            if file_path is None:
-                return Response(500)
+                raise IOError("Could not create temporary directory " + tmp_dir)
+            if not request.mimetype == "application/json":
+                raise TypeError("Incorrect media type received. Got " + request.mimetype +
+                                ", excepted application/json")
+            else:
+                # Write request data to file
+                file_path = _write_request_data(request, tmp_dir, "isa.json")
+                if file_path is None:
+                    raise IOError("Could not create temporary file " + file_path)
 
-            # Convert
-            converter = JsonToIsatabWriter()
-            converter.parsingJsonCombinedFile(file_path, tmp_dir)
+                # Convert
+                converter = JsonToIsatabWriter()
+                converter.parsingJsonCombinedFile(file_path, tmp_dir)
 
-            # Zip and send back generated tab directory
-            os.remove(file_path)  # Remove json file before zipping up directory
-            tmp_file = tmp_dir + '.zip'
-            zip_path = os.path.join(tmp_dir, tmp_file)
-            zip_file = ZipFile(zip_path, 'w')
-            _zipdir(tmp_dir, zip_file)
-            zip_file.close()
+                # Zip and send back generated tab directory
+                os.remove(file_path)  # Remove json file before zipping up directory
+                zip_path = os.path.join(tmp_dir, tmp_file)
+                zip_file = ZipFile(zip_path, 'w')
+                _zipdir(tmp_dir, zip_file)
+                zip_file.close()
+                if not os.path.exists(zip_path):
+                    raise IOError("Could not create ZIP file " + zip_path)
 
-            # Build and send response back
-            response = _file_to_response(response, zip_path, "application/zip")
-            response.status_code = 200
+                # Build and send response back
+                response = _file_to_response(response, zip_path, "application/zip")
+                response.status_code = 200
+        except TypeError:
+            response = Response(status=415)
+        except:
+            response = Response(status=500)
+        finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
-            os.remove(tmp_file)
-            return response
-        else:
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
             return response
 
 
@@ -254,37 +266,49 @@ class ConvertIsaTabToSra(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == 'application/zip':
-            # Create temporary directory
-            tmp_dir = _create_temp_dir()
+        response = Response(status=500)
+        # Create temporary directory
+        tmp_dir = _create_temp_dir()
+        try:
             if tmp_dir is None:
-                return Response(500)
+                raise IOError("Could not create temporary directory " + tmp_dir)
+            if not request.mimetype == "application/zip":
+                raise TypeError("Incorrect media type received. Got " + request.mimetype +
+                                ", excepted application/zip")
+            else:
+                # Write request data to file
+                file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
+                if file_path is None:
+                    raise IOError("Could not create temporary file " + file_path)
 
-            # Write request data to file
-            file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
-            if file_path is None:
-                return Response(500)
+                # Setup path to configuration
+                config_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                          'configurations/isaconfig-default_v2015-07-02')
 
-            # Setup path to configuration
-            config_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                      'configurations/isaconfig-default_v2015-07-02')
+                with ZipFile(file_path, 'r') as z:
+                    # extract ISArchive files
+                    z.extractall(tmp_dir)
+                    src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
 
-            with ZipFile(file_path, 'r') as z:
-                # extract ISArchive files
-                z.extractall(tmp_dir)
-                src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    # convert to SRA writes to /sra
+                    from isatools.convert import isatab2sra
+                    isatab2sra.create_sra(src_dir, tmp_dir, config_dir)
+                    zip_path = os.path.join(os.path.join(tmp_dir, 'sra.zip'))
+                    zip_file = ZipFile(os.path.join(zip_path), 'w')
+                    _zipdir(tmp_dir + '/sra/' + z.filelist[0].filename, zip_file)
+                    zip_file.close()
+                    if not os.path.exists(zip_path):
+                        raise IOError("Could not create ZIP file " + zip_path)
 
-                # convert to SRA writes to /sra
-                from isatools.convert import isatab2sra
-                isatab2sra.create_sra(src_dir, tmp_dir, config_dir)
-                zip_path = os.path.join(os.path.join(tmp_dir, 'sra.zip'))
-                zip_file = ZipFile(os.path.join(zip_path), 'w')
-                _zipdir(tmp_dir + '/sra/' + z.filelist[0].filename, zip_file)
-                zip_file.close()
-
-                # Build and send response back
-                response = _file_to_response(response, zip_path, 'application/zip')
-                response.status_code = 200
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-        return response
+                    # Build and send response back
+                    response = _file_to_response(response, zip_path, 'application/zip')
+                    response.status_code = 200
+        except TypeError as t:
+            response = Response(status=415)
+            response.set_data(t)
+        except Exception as e:
+            response = Response(status=500)
+            response.set_data(e)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return response
