@@ -16,9 +16,8 @@ def _allowed_file(filename):
 
 def _zipdir(path, ziph):
     # ziph is zipfile handle
-    for root, dirs, files in os.walk(path):
-        for file in files:
-            ziph.write(os.path.join(root, file))
+    for file in os.listdir(path):
+        ziph.write(os.path.join(path, file), file)
 
 
 def _create_temp_dir():
@@ -90,7 +89,8 @@ class ConvertJsonToIsaTab(Resource):
 
             # Zip and send back generated tab directory
             os.remove(file_path)  # Remove json file before zipping up directory
-            zip_path = os.path.join(tmp_dir, '../isatab.zip')
+            tmp_file = tmp_dir + '.zip'
+            zip_path = os.path.join(tmp_dir, tmp_file)
             zip_file = ZipFile(zip_path, 'w')
             _zipdir(tmp_dir, zip_file)
             zip_file.close()
@@ -99,6 +99,7 @@ class ConvertJsonToIsaTab(Resource):
             response = _file_to_response(response, zip_path, "application/zip")
             response.status_code = 200
             shutil.rmtree(tmp_dir, ignore_errors=True)
+            os.remove(tmp_file)
             return response
         else:
             return response
@@ -277,12 +278,13 @@ class ConvertIsaTabToSra(Resource):
                 # convert to SRA writes to /sra
                 from isatools.convert import isatab2sra
                 isatab2sra.create_sra(src_dir, tmp_dir, config_dir)
-                zip_file = ZipFile(os.path.join(os.path.join(tmp_dir, 'sra/'), 'sra.zip'), 'w')
-                _zipdir(tmp_dir, zip_file)
+                zip_path = os.path.join(os.path.join(tmp_dir, 'sra.zip'))
+                zip_file = ZipFile(os.path.join(zip_path), 'w')
+                _zipdir(tmp_dir + '/sra/' + z.filelist[0].filename, zip_file)
                 zip_file.close()
 
                 # Build and send response back
-                response = _file_to_response(response, zip_file, 'application/zip')
+                response = _file_to_response(response, zip_path, 'application/zip')
                 response.status_code = 200
                 shutil.rmtree(tmp_dir, ignore_errors=True)
         return response
