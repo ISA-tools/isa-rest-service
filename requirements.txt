@@ -1,5 +1,2 @@
-flask
-flask_restful
 flask_restful_swagger
-warlock
--e git+https://github.com/ISA-tools/isa-api.git#egg=isatools
+isatools

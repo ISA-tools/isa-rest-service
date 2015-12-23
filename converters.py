@@ -6,7 +6,6 @@ from zipfile import ZipFile
 from flask import Response, request
 from flask_restful import Resource
 from flask_restful_swagger import swagger
-from isatools.convert.json2isatab import JsonToIsatabWriter
 
 
 def _allowed_file(filename):
@@ -30,8 +29,8 @@ def _create_temp_dir():
         return ul_dir
 
 
-def _write_request_data(request, tmp_dir, file_name):
-    data = request.get_data()
+def _write_request_data(request_, tmp_dir, file_name):
+    data = request_.get_data()
     file_path = os.path.join(tmp_dir, file_name)
     fd = os.open(file_path, os.O_CREAT | os.O_RDWR)
     os.write(fd, data)
