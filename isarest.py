@@ -7,7 +7,7 @@ from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 from zipfile import ZipFile
 import config
-from isatools.convert import tab2json
+from isatools.convert import isatab2json
 
 
 def _allowed_file(filename):
@@ -80,25 +80,29 @@ class ConvertTabToJson(Resource):
     def post(self):
         response = Response(status=415)
         if request.mimetype == "application/zip":
-            # Create temporary directory
-            tmp_dir = _create_temp_dir()
-            if tmp_dir is None:
-                return Response(500)
-            # Write request data to file
-            file_path = _write_request_data(request, tmp_dir, str(uuid.uuid4()) + ".zip")
-            if file_path is None:
-                return Response(500)
-            # Extract ISArchive files
-            with ZipFile(file_path, 'r') as z:
-                z.extractall(tmp_dir)
-                # Convert
-                src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
-                tab2json.convert(src_dir, src_dir)
-                # return just the combined JSON
-                combined_json_file = os.path.join(src_dir, os.path.normpath(z.filelist[0].filename) + ".json")
-                combined_json = json.load(open(combined_json_file))
+            try:
+                # Write request data to file
+                tmp_file = str(uuid.uuid4()) + ".zip"
+                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
+                if file_path is None:
+                    return Response(500)
+                # Extract ISArchive files
+                with ZipFile(file_path, 'r') as z:
+                    # Create temporary directory
+                    tmp_dir = _create_temp_dir()
+                    if tmp_dir is None:
+                        return Response(500)
+                    z.extractall(tmp_dir)
+                    # Convert
+                    src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    isatab2json.convert(src_dir, src_dir)
+                    # return just the combined JSON
+                    combined_json_file = os.path.join(src_dir, os.path.normpath(z.filelist[0].filename) + ".json")
+                    combined_json = json.load(open(combined_json_file))
+            finally:
                 # cleanup generated directories
                 shutil.rmtree(tmp_dir, ignore_errors=True)
+                os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
             response = jsonify(combined_json)
         return response
 
