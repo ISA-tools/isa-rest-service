@@ -8,7 +8,7 @@ from flask import Flask, Response, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 import config
-from isatools.convert import isatab2json, isatab2sra
+from isatools.convert import isatab2json, isatab2sra, json2isatab
 
 
 def _allowed_file(filename):
@@ -88,7 +88,7 @@ class ConvertTabToJson(Resource):
                 if file_path is None:
                     return Response(500)
                 # Extract ISArchive files
-                with ZipFile(file_path, 'r') as z:
+                with zipfile.ZipFile(file_path, 'r') as z:
                     # Create temporary directory
                     tmp_dir = _create_temp_dir()
                     if tmp_dir is None:
@@ -105,6 +105,34 @@ class ConvertTabToJson(Resource):
                 shutil.rmtree(tmp_dir, ignore_errors=True)
                 os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
             response = jsonify(combined_json)
+        return response
+
+
+class ConvertJsonToTab(Resource):
+
+    """Convert to ISA-JSON to an ISA-Tab archive"""
+
+    def post(self):
+        response = Response(status=415)
+        if request.mimetype == "application/json":
+            tmp_file = str(uuid.uuid4()) + ".json"
+            tmp_dir = _create_temp_dir()
+            try:
+                # Write request data to file
+                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
+                if file_path is None:
+                    return Response(500)
+                json2isatab.convert(file_path, tmp_dir)
+                memf = io.BytesIO()
+                with zipfile.ZipFile(memf, 'w') as zf:
+                    for file in os.listdir(tmp_dir):
+                        zf.write(os.path.join(tmp_dir, file), file)
+                memf.seek(0)
+                response = send_file(memf, mimetype='application/zip')
+            finally:
+                # cleanup generated directories
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
         return response
 
 
