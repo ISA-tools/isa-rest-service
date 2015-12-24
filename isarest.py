@@ -2,10 +2,11 @@ import os
 import uuid
 import shutil
 import json
+import io
+import zipfile
 from flask import Flask, Response, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
-from zipfile import ZipFile
 import config
 from isatools.convert import isatab2json, isatab2sra
 
@@ -152,21 +153,16 @@ class ConvertTabToSra(Resource):
                 # Setup path to configuration
                 config_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'isaconfig-default')
 
-                with ZipFile(file_path, 'r') as z:
+                with zipfile.ZipFile(file_path, 'r') as z:
                     # extract ISArchive files
                     z.extractall(tmp_dir)
                     src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
                     # convert to SRA writes to /sra
                     isatab2sra.create_sra(src_dir, tmp_dir, config_dir)
-
-                    import io, zipfile, time, bz2
                     memf = io.BytesIO()
                     with zipfile.ZipFile(memf, 'w') as zf:
                         for file in os.listdir(tmp_dir + '/sra/' + z.filelist[0].filename):
-                            zf.write(os.path.join(tmp_dir + '/sra/' + z.filelist[0].filename, file))
-                    memf.seek(0)
-                    f = open('tmp/sra.zip', 'wb')
-                    f.write(memf.read())
+                            zf.write(os.path.join(tmp_dir + '/sra/' + z.filelist[0].filename, file), file)
                     memf.seek(0)
                     response = send_file(memf, mimetype='application/zip')
         except TypeError as t:
@@ -176,7 +172,7 @@ class ConvertTabToSra(Resource):
             response = Response(status=500)
             print(str(e))
         finally:
-            # shutil.rmtree(tmp_dir, ignore_errors=True)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             return response
 
 app = Flask(__name__)
