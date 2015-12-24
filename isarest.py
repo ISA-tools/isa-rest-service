@@ -2,7 +2,7 @@ import os
 import uuid
 import shutil
 import json
-from flask import Flask, Response, request, jsonify
+from flask import Flask, Response, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 from zipfile import ZipFile
@@ -158,22 +158,23 @@ class ConvertTabToSra(Resource):
                     src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
                     # convert to SRA writes to /sra
                     isatab2sra.create_sra(src_dir, tmp_dir, config_dir)
-                    zip_path = os.path.join(os.path.join(tmp_dir, 'sra.zip'))
-                    zip_file = ZipFile(os.path.join(zip_path), 'w')
-                    _zipdir(tmp_dir + '/sra/' + z.filelist[0].filename, zip_file)
-                    zip_file.close()
-                    if not os.path.exists(zip_path):
-                        raise IOError("Could not create ZIP file " + zip_path)
-                    from flask import send_file
-                    response = send_file(open(zip_path, 'rb'), mimetype='application/zip')
-                    # Build and send response back
-                    # response = _file_to_response(response, zip_path, 'application/zip')
+
+                    import io, zipfile, time, bz2
+                    memf = io.BytesIO()
+                    with zipfile.ZipFile(memf, 'w') as zf:
+                        for file in os.listdir(tmp_dir + '/sra/' + z.filelist[0].filename):
+                            zf.write(os.path.join(tmp_dir + '/sra/' + z.filelist[0].filename, file))
+                    memf.seek(0)
+                    f = open('tmp/sra.zip', 'wb')
+                    f.write(memf.read())
+                    memf.seek(0)
+                    response = send_file(memf, mimetype='application/zip')
         except TypeError as t:
             response = Response(status=415)
-            response.set_data(str(t))
+            print(str(t))
         except Exception as e:
             response = Response(status=500)
-            response.set_data(str(e))
+            print(str(e))
         finally:
             # shutil.rmtree(tmp_dir, ignore_errors=True)
             return response

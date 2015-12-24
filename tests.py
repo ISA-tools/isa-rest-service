@@ -48,9 +48,10 @@ class TabToSraXmlConverterTests(BaseConverterTestCase):
     def test_convert(self):
         response = self.app.post(path='/api/v1/convert/tab-to-sra', data=self.test_data_zip,
                                  headers={'Content-Type': 'application/zip'})
-        outfile = open('tmp/out.zip', 'w')
+
+        outfile = open('tmp/out.zip', 'wb')
         content = response.get_data()
-        outfile.write(content.decode())
+        outfile.write(content)
         outfile.close()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, 'application/zip')
