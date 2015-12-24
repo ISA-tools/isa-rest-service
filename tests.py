@@ -7,7 +7,7 @@ class BaseConverterTestCase(unittest.TestCase):
     """Base test case for testing the converters"""
     def setUp(self):
         self.app = app.test_client()
-        self.test_data_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-I-1.zip'), 'rb').read()
+        self.test_data_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.zip'), 'rb').read()
         # self.test_data_json = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-I-1.json'), 'rb').read()
 
     def tearDown(self):
@@ -15,18 +15,18 @@ class BaseConverterTestCase(unittest.TestCase):
         pass
 
 
-class TabToJsonConverterTests(BaseConverterTestCase):
-
-    def test_convert(self):
-        response = self.app.post(path='/api/v1/convert/tab-to-json', data=self.test_data_zip,
-                                 headers={'Content-Type': 'application/zip'})
-        assert(response.status_code == 200)
-        assert(response.mimetype == 'application/json')
-
-    # def test_unsupported_content(self):
-    #     response = self.app.post(path='/api/v1/convert/tab-to-json', data=self.test_data_json,
-    #                              headers={'Content-Type': 'application/json'})
-    #     assert(response.status_code == 415)
+# class TabToJsonConverterTests(BaseConverterTestCase):
+#
+#     def test_convert(self):
+#         response = self.app.post(path='/api/v1/convert/tab-to-json', data=self.test_data_zip,
+#                                  headers={'Content-Type': 'application/zip'})
+#         self.assertEqual(response.status_code, 200)
+#         self.assertEqual(response.mimetype, 'application/json')
+#
+#     def test_unsupported_content(self):
+#         response = self.app.post(path='/api/v1/convert/tab-to-json', data=self.test_data_json,
+#                                  headers={'Content-Type': 'application/json'})
+#         self.assertEqual(response.status_code, 415)
 
 
 # class JsonToTabConverterTests(BaseConverterTestCase):
@@ -34,27 +34,31 @@ class TabToJsonConverterTests(BaseConverterTestCase):
 #     def test_convert(self):
 #         response = self.app.post(path='/convert/json-to-isatab', data=self.test_data_json,
 #                                  headers={'Content-Type': 'application/json'})
-#         assert(response.status_code == 200)
-#         assert(response.mimetype == 'application/zip')
+#         self.assertEqual(response.status_code, 200)
+#         self.assertEqual(response.mimetype, 'application/zip')
 #
 #     def test_unsupported_mimetype(self):
 #         response = self.app.post(path='/convert/json-to-isatab', data=self.test_data_zip,
 #                          headers={'Content-Type': 'application/zip'})
-#         assert(response.status_code == 415)
+#         self.assertEqual(response.status_code, 415)
 
 
-# class TabToSraXmlConverterTests(BaseConverterTestCase):
-#
-#     def test_convert(self):
-#         response = self.app.post(path='/convert/isatab-to-sra', data=self.test_data_zip,
-#                                  headers={'Content-Type': 'application/zip'})
-#         assert(response.status_code == 200)
-#         assert(response.mimetype == 'application/zip')
-#
-#     def test_unsupported_content(self):
-#         response = self.app.post(path='/convert/isatab-to-sra', data=self.test_data_json,
-#                                  headers={'Content-Type': 'application/json'})
-#         assert(response.status_code == 415)
+class TabToSraXmlConverterTests(BaseConverterTestCase):
+
+    def test_convert(self):
+        response = self.app.post(path='/api/v1/convert/tab-to-sra', data=self.test_data_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        outfile = open('tmp/out.zip', 'w')
+        content = response.get_data()
+        outfile.write(content.decode())
+        outfile.close()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    # def test_unsupported_content(self):
+    #     response = self.app.post(path='/convert/isatab-to-sra', data=self.test_data_json,
+    #                              headers={'Content-Type': 'application/json'})
+    #     self.assertEqual(response.status_code, 415)
 
 if __name__ == '__main__':
     unittest.main()

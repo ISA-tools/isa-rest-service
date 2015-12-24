@@ -7,7 +7,7 @@ from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 from zipfile import ZipFile
 import config
-from isatools.convert import isatab2json
+from isatools.convert import isatab2json, isatab2sra
 
 
 def _allowed_file(filename):
@@ -40,10 +40,10 @@ def _write_request_data(request_, tmp_dir, file_name):
 
 
 def _file_to_response(response, file_path, mimetype):
-    fd = open(os.path.join(file_path), 'r')
-    response.data = fd.read()
+    fd = open(file_path, 'rb')
+    response.set_data(fd.read())
     fd.close()
-    response.headers.add('content-length', str(len(response.data)))
+    response.headers.add('content-length', str(len(response.get_data())))
     response.mimetype = mimetype
     return response
 
@@ -107,11 +107,83 @@ class ConvertTabToJson(Resource):
         return response
 
 
+class ConvertTabToSra(Resource):
+    """Convert to ISA-Tab archive to SRA"""
+    @swagger.operation(
+        notes='Converts an ISArchive ZIP file containing a collection of ISA-Tab files to SRA XML ZIP file',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a valid ISArchive ZIP file, convert and return a ZIP containing valid SRA XML.",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISArchive (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted ISA content should be in the returned SRA XML."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=500)
+        # Create temporary directory
+        tmp_dir = _create_temp_dir()
+        try:
+            if tmp_dir is None:
+                raise IOError("Could not create temporary directory " + tmp_dir)
+            if not request.mimetype == "application/zip":
+                raise TypeError("Incorrect media type received. Got " + request.mimetype +
+                                ", excepted application/zip")
+            else:
+                # Write request data to file
+                file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
+                if file_path is None:
+                    raise IOError("Could not create temporary file " + file_path)
+
+                # Setup path to configuration
+                config_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'isaconfig-default')
+
+                with ZipFile(file_path, 'r') as z:
+                    # extract ISArchive files
+                    z.extractall(tmp_dir)
+                    src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    # convert to SRA writes to /sra
+                    isatab2sra.create_sra(src_dir, tmp_dir, config_dir)
+                    zip_path = os.path.join(os.path.join(tmp_dir, 'sra.zip'))
+                    zip_file = ZipFile(os.path.join(zip_path), 'w')
+                    _zipdir(tmp_dir + '/sra/' + z.filelist[0].filename, zip_file)
+                    zip_file.close()
+                    if not os.path.exists(zip_path):
+                        raise IOError("Could not create ZIP file " + zip_path)
+                    from flask import send_file
+                    response = send_file(open(zip_path, 'rb'), mimetype='application/zip')
+                    # Build and send response back
+                    # response = _file_to_response(response, zip_path, 'application/zip')
+        except TypeError as t:
+            response = Response(status=415)
+            response.set_data(str(t))
+        except Exception as e:
+            response = Response(status=500)
+            response.set_data(str(e))
+        finally:
+            # shutil.rmtree(tmp_dir, ignore_errors=True)
+            return response
+
 app = Flask(__name__)
 app.config.from_object(config)
 
 api = swagger.docs(Api(app), apiVersion='0.1')
 api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
+api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
