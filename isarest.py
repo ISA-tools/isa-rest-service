@@ -11,6 +11,7 @@ import config
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 
+
 def _allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1] in config.ALLOWED_EXTENSIONS
 

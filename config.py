@@ -9,7 +9,7 @@ STATIC_FOLDER = os.path.join(PROJECT_PATH, 'static')
 TEMPLATE_FOLDER = os.path.join(PROJECT_PATH, 'templates')
 # CSRF_ENABLED = True
 
-UPLOAD_FOLDER = os.path.join(PROJECT_PATH, 'tmp')  # PUT THIS SOMEWHERE SENSIBLE
+UPLOAD_FOLDER = os.path.join(PROJECT_PATH, '/tmp')  # PUT THIS SOMEWHERE SENSIBLE
 ALLOWED_EXTENSIONS = {'zip'}
 
 if ENV == 'dev':
@@ -17,5 +17,5 @@ if ENV == 'dev':
     APP_BASE_LINK = 'http://localhost:' + str(PORT)
     DEBUG = True
 else:
-    APP_BASE_LINK = 'https://newt.oerc.ox.ac.uk'
+    APP_BASE_LINK = 'https://something.ox.ac.uk'
     DEBUG = False
