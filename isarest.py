@@ -9,7 +9,7 @@ from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 import config
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra
-
+from isatools.convert.isatab2cedar import ISATab2CEDAR
 
 def _allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1] in config.ALLOWED_EXTENSIONS
@@ -251,6 +251,45 @@ class ConvertJsonToSra(Resource):
             return response
 
 
+class ConvertTabToCedar(Resource):
+
+    """Convert to ISA tab (zip) to CEDAR JSON"""
+    def post(self):
+        response = Response(status=415)
+        if request.mimetype == "application/zip":
+            try:
+                # Write request data to file
+                tmp_file = str(uuid.uuid4()) + ".zip"
+                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
+                if file_path is None:
+                    return Response(500)
+                # Extract ISArchive files
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    # Create temporary directory
+                    tmp_dir = _create_temp_dir()
+                    if tmp_dir is None:
+                        return Response(500)
+                    z.extractall(tmp_dir)
+                    # Convert
+                    src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    tab2cedar = ISATab2CEDAR('http://www.isa-tools.org/')
+                    tab2cedar.createCEDARjson(src_dir, src_dir, True)
+                    # return just the combined JSON
+                    files = [f for f in os.listdir(src_dir) if f.endswith('.json')]
+                    if len(files) == 1:  # current assumption is that only one JSON should exist to know what to return
+                        combined_json_file = os.path.join(src_dir, files[0])
+                        combined_json = json.load(open(combined_json_file))
+                    else:
+                        raise IOError("More than one .json was output - cannot disambiguate what to return")
+            except Exception:
+                return Response(status=500)
+            finally:
+                # cleanup generated directories
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
+            response = jsonify(combined_json)
+        return response
+
 app = Flask(__name__)
 app.config.from_object(config)
 
@@ -259,6 +298,7 @@ api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
 api.add_resource(ConvertJsonToTab, '/api/v1/convert/json-to-tab')
 api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
 api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
+api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
