@@ -1,64 +1,34 @@
-# isa-rest-api
+ISA REST service
+================
+<img align="right" src="http://www.isa-tools.org/wp-content/themes/isatools-wp-theme/img/footer_logo.svg">
+The open source ISA metadata tracking tools help to manage an increasingly diverse set of life science, environmental and biomedical experiments that employing one or a combination of technologies.
 
-RESTful web service to interact with ISA API. Separating out the web service from the programmable API.
+Built around the ‘Investigation’ (the project context), ‘Study’ (a unit of research) and ‘Assay’ (analytical measurement) general-purpose Tabular format, the ISA tools helps you to provide rich description of the experimental metadata (i.e. sample characteristics, technology and measurement types, sample-to-data relationships) so that the resulting data and discoveries are reproducible and reusable.
 
-Needs to import isatools package from [isa-api project](https://github.com/ISA-tools/isa-api)
+The ISA REST service is a restful web service to interact with the [ISA API](https://github.com/ISA-tools/isa-api). Needs to import the `isatools` package published on PyPI. We strongly suggest you check out the [ISA API](https://github.com/ISA-tools/isa-api) project first before trying out this REST service. 
 
-Basically to test directly, make sure you've got the right prereqs installed:
+To find out more about ISA, see [www.isa-tools.org](http://www.isa-tools.org)
 
-`pip install -r requirements.txt`
-in `isarestapi/config.py` set `UPLOAD_FOLDER` to somewhere sensible (e.g. `/tmp/` - it stores just temporary files for
-the conversion.
+To find out who's using ISA and about the ISA development and user community, see [www.isacommons.org](http://www.isacommons.org)
 
-then:
+----
+*Authors*: [The ISA team](http://www.isa-tools.org/team/).
 
-`python app.py` to start flask's embedded server, and browse. 
-`localhost:5000/api/spec.html` for swagger UI (Swagger documentation not yet complete)
-`localhost:5000/api/spec.json` for swagger JSON
+*License*: This code is licensed under the [CPAL License](https://raw.githubusercontent.com/ISA-tools/isa-api/master/LICENSE.txt).
 
-or load into PyCharm and play with the test_rest_api.py tests
+*Repository*:   [https://github.com/ISA-tools/isa-rest-service](https://github.com/ISA-tools/isa-rest-service)
 
+*ISA team email*: [https://groups.google.com/forum/#!forum/isatools](https://groups.google.com/forum/#!forum/isatools)
 
-# License
+*ISA discussion group*: [https://groups.google.com/forum/#!forum/isaforum](https://groups.google.com/forum/#!forum/isaforum)
 
-[CPAL License](https://raw.githubusercontent.com/ISA-tools/isa-rest-api/master/LICENSE.txt)
+*Github issue tracker*: [https://github.com/ISA-tools/isa-rest-service/issues](https://github.com/ISA-tools/isa-rest-service/issues)
 
-# Usage
-## Convert ISArchive (ISA-Tab) archive to ISA-JSON
-### `POST /convert/isatab-to-json`
-| Consumes              | Produces           | Description    |
-| --------------------- |:------------------:| -------------- |
-| `application/zip`    | `application/json` |  Takes a ISArchive zip file containing ISA-Tab `.txt` files, converts and returns a single ISA-JSON. Returns 200 OK if succeeded. |
+----
+Using the ISA REST service
+--------------------------
+To install and start using the ISA REST service, check out the [wiki](https://github.com/ISA-tools/isa-rest-service/wiki) that has information on how to install and run the service, and what REST calls you can make.
 
-## Convert ISArchive (ISA-JSON) to Tab ISArchive (ISA-Tab) (incomplete, do not use)
-### `POST /convert/json-to-isatab`
-| Consumes              | Produces              | Description    |
-| --------------------- |:---------------------:| -------------- |
-| `multipart/form-data` | `multipart/form-data` |  Takes a ISArchive zip file containing a collection of ISA-JSON `.json` files, converts and returns a ISArchive containing ISA-Tab `.txt` files. Returns 200 OK if succeeded.|
-
-### `POST /convert/json-to-isatab`
-| Consumes              | Produces              | Description    |
-| --------------------- |:---------------------:| -------------- |
-| `application/json`    | `application/zip`     |  Takes ISA-JSON content, converts and returns a ISArchive containing ISA-Tab `.txt` files. Returns 200 OK if succeeded. |
-
-## Convert ISArchive (ISA-Tab) to CEDAR JSON
-### `POST /convert/isatab-to-cedar`
-| Consumes              | Produces              | Description    |
-| --------------------- |:---------------------:| -------------- |
-| `application/zip    ` | `application/json`    |  Takes a ISArchive zip file containing a collection of ISA-Tab `.txt` files, converts and returns a single CEDAR JSON. Returns 200 OK if succeeded.|
-
-## Create and populate and ISA object, and then get an ISA document (incomplete, do not use)
-### `POST /create/`
-| Consumes              | Produces              | Description    |
-| --------------------- |:---------------------:| -------------- |
-| `application/json`    | `application/json`    |  Takes JSON with create parameters (TBC), returns 201 OK and URI of newly created ISA object if succeeded. |
-
-### `PUT /update/{object_id}`
-| Consumes              | Produces              | Description    |
-| --------------------- |:---------------------:| -------------- |
-| `application/json`    | `application/json`    |  Takes JSON with update parameters (TBC), returns 201 OK and URI of updated ISA object if succeeded. |
-
-### `GET /get/{object_id}`
-| Consumes              | Produces              | Description    |
-| --------------------- |:---------------------:| -------------- |
-|                       | `application/json`    |  Returns 200 OK and URI of ISA-JSON representation of ISA object with object ID `{object_id}`. |
+Contributing
+------------
+We would be very happy to receive any help and contributions (testing, feature requests, pull requests). Please feel free to contact our development team, ask a question, report a bug or file a feature request in the Github issue tracker, or fork our repository.
