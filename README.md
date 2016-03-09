@@ -5,7 +5,7 @@ The open source ISA metadata tracking tools help to manage an increasingly diver
 
 Built around the ‘Investigation’ (the project context), ‘Study’ (a unit of research) and ‘Assay’ (analytical measurement) general-purpose Tabular format, the ISA tools helps you to provide rich description of the experimental metadata (i.e. sample characteristics, technology and measurement types, sample-to-data relationships) so that the resulting data and discoveries are reproducible and reusable.
 
-The ISA REST service is a restful web service to interact with the [ISA API](https://github.com/ISA-tools/isa-api). Needs to import the `isatools` package published on PyPI. We strongly suggest you check out the [ISA API](https://github.com/ISA-tools/isa-api) project first before trying out this REST service. 
+The ISA REST service is a restful web service to interact with the [ISA API](https://github.com/ISA-tools/isa-api). This service needs to import the `isatools` package [published on PyPI](https://pypi.python.org/pypi/isatools/). **We strongly suggest you check out the [ISA API](https://github.com/ISA-tools/isa-api) project first before trying out this REST service.** 
 
 To find out more about ISA, see [www.isa-tools.org](http://www.isa-tools.org)
 
