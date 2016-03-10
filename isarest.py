@@ -82,6 +82,9 @@ class ConvertTabToJson(Resource):
     def post(self):
         response = Response(status=415)
         if request.mimetype == "application/zip":
+            tmp_dir = None
+            tmp_file = None
+            combined_json = None
             try:
                 # Write request data to file
                 tmp_file = str(uuid.uuid4()) + ".zip"
@@ -105,12 +108,16 @@ class ConvertTabToJson(Resource):
                         combined_json = json.load(open(combined_json_file))
                     else:
                         raise IOError("More than one .json was output - cannot disambiguate what to return")
-            except Exception:
+            except Exception as e:
+                print(e)
                 return Response(status=500)
             finally:
                 # cleanup generated directories
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
+                except:
+                    pass
             response = jsonify(combined_json)
         return response
 
