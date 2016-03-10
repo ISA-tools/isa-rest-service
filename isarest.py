@@ -157,10 +157,11 @@ class ConvertJsonToTab(Resource):
             tmp_dir = _create_temp_dir()
             try:
                 # Write request data to file
-                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
+                file_path = _write_request_data(request, tmp_dir, tmp_file)
                 if file_path is None:
                     return Response(500)
                 json2isatab.convert(open(file_path), tmp_dir)
+                os.remove(file_path)
                 memf = io.BytesIO()
                 with zipfile.ZipFile(memf, 'w') as zf:
                     for file in os.listdir(tmp_dir):
@@ -170,7 +171,6 @@ class ConvertJsonToTab(Resource):
             finally:
                 # cleanup generated directories
                 shutil.rmtree(tmp_dir, ignore_errors=True)
-                os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
         return response
 
 
