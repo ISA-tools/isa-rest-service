@@ -12,7 +12,7 @@ class IsaRestClient:
     def convert_tab_to_json(self, zipped_tab_bytes):
         """
         :param zipped_tab_bytes: Bytes of zip file containing ISA tabs to sent to converter service
-        :return: Absolute path for local JSON file returned by converter service
+        :return: Absolute path for local JSON file returned by converter service called out.json
 
         Example usage
 
@@ -25,7 +25,7 @@ class IsaRestClient:
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.json()
-            outpath = os.path.join(self.dl_folder, data['identifier'] + '.json')
+            outpath = os.path.join(self.dl_folder, 'out.json')
             with open(outpath, 'w') as f:
                 json.dump(data, f)
             return os.path.abspath(f.name)
@@ -91,4 +91,25 @@ class IsaRestClient:
             outpath = os.path.join(self.dl_folder, 'out.zip')
             with open(outpath, 'wb') as f:
                 f.write(data)
+            return os.path.abspath(f.name)
+
+    def convert_tab_to_cedar(self, zipped_tab_bytes):
+        """
+        :param zipped_tab_bytes: Bytes of zip file containing ISA tabs to sent to converter service
+        :return: Absolute path for local CEDAR JSON file returned by converter service called out.json
+
+        Example usage
+
+            from isarest_client import IsaRestClient
+            client = IsaRestClient(dl_folder='tmp/')
+            client.convert_tab_to_json(open('testdata/BII-S-3.zip', 'rb').read())
+        """
+        response = requests.post(self.baseurl + '/api/v1/convert/tab-to-cedar',
+                                 headers={'content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
+        print("HTTP response code: " + str(response.status_code))
+        if response.ok:
+            data = response.json()
+            outpath = os.path.join(self.dl_folder, 'out.json')
+            with open(outpath, 'w') as f:
+                json.dump(data, f)
             return os.path.abspath(f.name)
