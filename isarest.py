@@ -54,13 +54,12 @@ class ConvertTabToJson(Resource):
 
     """Convert to ISA- tab (zip) to ISA-JSON"""
     @swagger.operation(
-        summary='Convert ISA-Tab to JSON',
-        notes='Converts a ZIP file containing a collection of ISA-Tab files to ISA-JSON (single combined '
-              'output)',
+        summary='Convert ISA tab to JSON',
+        notes='Converts a ZIP file containing a collection of ISA tab files to ISA-JSON',
         parameters=[
             {
                 "name": "body",
-                "description": "Given a ZIP file containing valid ISA tab files, convert and return a valid ISA-JSON (single file).",
+                "description": "Given a ZIP file containing valid ISA tab files, convert and return a valid ISA-JSON",
                 "required": True,
                 "allowMultiple": False,
                 "dataType": "ISA tab (ZIP)",
@@ -176,6 +175,32 @@ class ConvertJsonToTab(Resource):
 
 class ConvertTabToSra(Resource):
 
+    """Convert to ISA tab (zip) to SRA XML (zip)"""
+    @swagger.operation(
+        summary='Convert ISA tab to SRA',
+        notes='Converts a ZIP file containing a collection of ISA-Tab files to ISA-JSON',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a ZIP file containing valid ISA tab files, convert and return a valid set of SRA XML files (zip)",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA tab (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted SRA content should be in the returned ZIP."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
     def post(self):
         response = Response(status=500)
         # Create temporary directory
@@ -217,6 +242,32 @@ class ConvertTabToSra(Resource):
 
 class ConvertJsonToSra(Resource):
 
+    """Convert to ISA tab (zip) to SRA XML (zip)"""
+    @swagger.operation(
+        summary='Convert ISA JSON to SRA',
+        notes='Converts a ISA JSON file with data (ZIP) to SRA XML files (ZIP)',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a ZIP file containing valid ISA tab files, convert and return a valid set of SRA XML files (zip)",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA tab (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted SRA content should be in the returned ZIP."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
     def post(self):
         response = Response(status=500)
         # Create temporary directory
@@ -262,6 +313,31 @@ class ConvertJsonToSra(Resource):
 class ConvertTabToCedar(Resource):
 
     """Convert to ISA tab (zip) to CEDAR JSON"""
+    @swagger.operation(
+        summary='Convert ISA tab to JSON',
+        notes='Converts a ZIP file containing a collection of ISA tab files to CEDAR JSON',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a ZIP file containing valid ISA tab files, convert and return a valid CEDAR JSON format (single file).",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA tab (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted ISA content should be in the returned JSON."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
     def post(self):
         response = Response(status=415)
         if request.mimetype == "application/zip":
