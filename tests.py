@@ -85,5 +85,19 @@ class TabToCedarConverterTests(BaseConverterTestCase):
         self.assertEqual(response.status_code, 415)
 
 
+class IsaJsonValidatorTests(BaseConverterTestCase):
+
+    def test_validate(self):
+        response = self.app.post(path='/api/v1/validate/json', data=self.test_data_json_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/json')
+
+    def test_unsupported_content(self):
+        response = self.app.post(path='/api/v1/validate/json', data=self.test_data_json,
+                                 headers={'Content-Type': 'application/json'})
+        self.assertEqual(response.status_code, 415)
+
+
 if __name__ == '__main__':
     unittest.main()
