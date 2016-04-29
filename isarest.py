@@ -10,6 +10,7 @@ from flask_restful_swagger import swagger
 import config
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra
 from isatools.convert.isatab2cedar import ISATab2CEDAR
+from isatools import isajson
 
 
 def _allowed_file(filename):
@@ -374,6 +375,67 @@ class ConvertTabToCedar(Resource):
             response = jsonify(combined_json)
         return response
 
+
+class ValidateIsaJSON(Resource):
+
+    """Validate an ISA JSON document"""
+
+    @swagger.operation(
+        summary='Validate ISA JSON',
+        notes='Validates a ZIP file containing a ISA JSON file and data files',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a ZIP file containing an ISA JSON and data files, unpack and run the validator on the contents",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA tab (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. A JSON validation report should be in the returned."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=500)
+        # Create temporary directory
+        tmp_dir = _create_temp_dir()
+        try:
+            if tmp_dir is None:
+                raise IOError("Could not create temporary directory " + tmp_dir)
+            if not request.mimetype == "application/zip":
+                raise TypeError("Incorrect media type received. Got " + request.mimetype +
+                                ", expected application/zip")
+            else:
+                # Write request data to file
+                file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
+                if file_path is None:
+                    raise IOError("Could not create temporary file " + file_path)
+
+                # Setup path to configuration
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    # extract ISArchive files
+                    z.extractall(tmp_dir)
+                    src_file_path = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    # find just the combined JSON
+                    v = isajson.validate(open(src_file_path))
+                    response = jsonify(v.generate_report_json())
+        except Exception:
+            response = Response(status=500)
+        finally:
+            # cleanup generated directories
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        return response
+
 app = Flask(__name__)
 app.config.from_object(config)
 
@@ -383,6 +445,7 @@ api.add_resource(ConvertJsonToTab, '/api/v1/convert/json-to-tab')
 api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
 api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
 api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
+api.add_resource(ValidateIsaJSON, '/api/v1/validate/json')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
