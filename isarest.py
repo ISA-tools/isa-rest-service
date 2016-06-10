@@ -406,34 +406,37 @@ class ValidateIsaJSON(Resource):
         ]
     )
     def post(self):
-        response = Response(status=500)
-        # Create temporary directory
-        tmp_dir = _create_temp_dir()
-        try:
-            if tmp_dir is None:
-                raise IOError("Could not create temporary directory " + tmp_dir)
-            if not request.mimetype == "application/zip":
-                raise TypeError("Incorrect media type received. Got " + request.mimetype +
-                                ", expected application/zip")
-            else:
-                # Write request data to file
-                file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
-                if file_path is None:
-                    raise IOError("Could not create temporary file " + file_path)
+        response = Response(status=415)
+        if request.mimetype == "application/zip":
+            tmp_dir = _create_temp_dir()
+            try:
+                if tmp_dir is None:
+                    raise IOError("Could not create temporary directory " + tmp_dir)
+                if not request.mimetype == "application/zip":
+                    raise TypeError("Incorrect media type received. Got " + request.mimetype +
+                                    ", expected application/zip")
+                else:
+                    # Write request data to file
+                    file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
+                    if file_path is None:
+                        raise IOError("Could not create temporary file " + file_path)
 
-                # Setup path to configuration
-                with zipfile.ZipFile(file_path, 'r') as z:
-                    # extract ISArchive files
-                    z.extractall(tmp_dir)
-                    src_file_path = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
-                    # find just the combined JSON
-                    v = isajson.validate(open(src_file_path))
-                    response = jsonify(v.generate_report_json())
-        except Exception:
-            response = Response(status=500)
-        finally:
-            # cleanup generated directories
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+                    # Setup path to configuration
+                    with zipfile.ZipFile(file_path, 'r') as z:
+                        # extract ISArchive files
+                        z.extractall(tmp_dir)
+                        src_file_path = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                        # find just the combined JSON
+                        log_msg_stream = isajson.validate(open(src_file_path))
+                        result = {
+                            "result:": log_msg_stream.getvalue()
+                        }
+                        response = jsonify(result)
+            except Exception:
+                response = Response(status=500)
+            finally:
+                # cleanup generated directories
+                shutil.rmtree(tmp_dir, ignore_errors=True)
         return response
 
 app = Flask(__name__)
