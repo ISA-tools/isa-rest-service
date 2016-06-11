@@ -88,13 +88,27 @@ class TabToCedarConverterTests(BaseConverterTestCase):
 class IsaJsonValidatorTests(BaseConverterTestCase):
 
     def test_validate(self):
+        response = self.app.post(path='/api/v1/validate/json', data=self.test_data_json,
+                                 headers={'Content-Type': 'application/json'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/json')
+
+    def test_unsupported_content(self):
         response = self.app.post(path='/api/v1/validate/json', data=self.test_data_json_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        self.assertEqual(response.status_code, 415)
+
+
+class IsaTabValidatorTests(BaseConverterTestCase):
+
+    def test_validate(self):
+        response = self.app.post(path='/api/v1/validate/isatab', data=self.test_data_zip,
                                  headers={'Content-Type': 'application/zip'})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, 'application/json')
 
     def test_unsupported_content(self):
-        response = self.app.post(path='/api/v1/validate/json', data=self.test_data_json,
+        response = self.app.post(path='/api/v1/validate/isatab', data=self.test_data_zip,
                                  headers={'Content-Type': 'application/json'})
         self.assertEqual(response.status_code, 415)
 
