@@ -10,7 +10,7 @@ from flask_restful_swagger import swagger
 import config
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra
 from isatools.convert.isatab2cedar import ISATab2CEDAR
-from isatools import isajson
+from isatools import isajson, isatab
 
 
 def _allowed_file(filename):
@@ -407,6 +407,58 @@ class ValidateIsaJSON(Resource):
     )
     def post(self):
         response = Response(status=415)
+        if request.mimetype == "application/json":
+            tmp_file = str(uuid.uuid4()) + ".json"
+            tmp_dir = _create_temp_dir()
+            try:
+                # Write request data to file
+                file_path = _write_request_data(request, tmp_dir, tmp_file)
+                if file_path is None:
+                    return Response(500)
+                log_msg_stream = isajson.validate(open(file_path))
+                result = {
+                    "result:": log_msg_stream.getvalue()
+                }
+                response = jsonify(result)
+            except Exception:
+                response = Response(status=500)
+            finally:
+                # cleanup generated directories
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+        return response
+
+
+class ValidateIsaTab(Resource):
+
+    """Validate an ISA tab document"""
+
+    @swagger.operation(
+        summary='Validate ISA tab',
+        notes='Validates a ZIP file containing ISA tab files',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a ZIP file containing an ISA tab, unpack and run the validator on the contents",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA tab (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. A JSON validation report should be in the returned."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=415)
         if request.mimetype == "application/zip":
             tmp_dir = _create_temp_dir()
             try:
@@ -425,13 +477,18 @@ class ValidateIsaJSON(Resource):
                     with zipfile.ZipFile(file_path, 'r') as z:
                         # extract ISArchive files
                         z.extractall(tmp_dir)
-                        src_file_path = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
-                        # find just the combined JSON
-                        log_msg_stream = isajson.validate(open(src_file_path))
-                        result = {
-                            "result:": log_msg_stream.getvalue()
-                        }
-                        response = jsonify(result)
+                        i_file_list = [i.filename for i in z.filelist if 'i_' in i.filename and i.filename.endswith('.txt')]
+                        if len(i_file_list) == 1:
+                            src_file_path = os.path.normpath(os.path.join(tmp_dir, i_file_list[0]))
+                            fp = open(src_file_path)
+                            # find just the combined JSON
+                            log_msg_stream = isatab.validate2(fp)
+                            result = {
+                                "result:": log_msg_stream.getvalue()
+                            }
+                            response = jsonify(result)
+                        else:
+                            raise Exception("Could not resolve investigation file entry point")
             except Exception:
                 response = Response(status=500)
             finally:
@@ -449,6 +506,7 @@ api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
 api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
 api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
 api.add_resource(ValidateIsaJSON, '/api/v1/validate/json')
+api.add_resource(ValidateIsaTab, '/api/v1/validate/isatab')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
