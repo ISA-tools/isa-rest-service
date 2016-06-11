@@ -113,3 +113,37 @@ class IsaRestClient:
             with open(outpath, 'w') as f:
                 json.dump(data, f)
             return os.path.abspath(f.name)
+
+    def validate_json(self, isa_json_bytes):
+        """
+        :param isa_json_bytes: Bytes of ISA JSON to sent to converter service
+        :return: JSON validation report: Validation report as JSON
+
+        Example usage
+
+            from isarest_client import IsaRestClient
+            client = IsaRestClient()
+            client.validate_json(open('testdata/BII-S-3.json', 'rb').read())
+        """
+        response = requests.post(self.baseurl + '/api/v1/validate/json',
+                                 headers={'content-type': 'application/json'}, data=isa_json_bytes, verify=False)
+        print("HTTP response code: " + str(response.status_code))
+        if response.ok:
+            print(response.content)
+
+    def validate_isatab(self, isatab_zip_bytes):
+        """
+        :param isatab_zip_bytes: Bytes of zip file containing ISA tabs to sent to converter service
+        :return: JSON validation report: Validation report as JSON
+
+        Example usage
+
+            from isarest_client import IsaRestClient
+            client = IsaRestClient()
+            client.validate_tab(open('testdata/BII-S-3.zip', 'rb').read())
+        """
+        response = requests.post(self.baseurl + '/api/v1/validate/isatab',
+                                 headers={'content-type': 'application/zip'}, data=isatab_zip_bytes, verify=False)
+        print("HTTP response code: " + str(response.status_code))
+        if response.ok:
+            print(response.content)
