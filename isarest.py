@@ -100,7 +100,7 @@ class ConvertTabToJson(Resource):
                     z.extractall(tmp_dir)
                     # Convert
                     src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
-                    isatab2json.convert(src_dir, src_dir)
+                    isatab2json.convert(src_dir, src_dir, validate_first=False, use_new_parser=True)
                     # return just the combined JSON
                     files = [f for f in os.listdir(src_dir) if f.endswith('.json')]
                     if len(files) == 1:  # current assumption is that only one JSON should exist to know what to return
@@ -225,7 +225,7 @@ class ConvertTabToSra(Resource):
                     z.extractall(tmp_dir)
                     src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
                     # convert to SRA writes to /sra
-                    isatab2sra.create_sra(src_dir, tmp_dir, config_dir)
+                    isatab2sra.convert(src_dir, tmp_dir)
                     memf = io.BytesIO()
                     with zipfile.ZipFile(memf, 'w') as zf:
                         for file in os.listdir(tmp_dir + '/sra/' + z.filelist[0].filename):
@@ -293,7 +293,7 @@ class ConvertJsonToSra(Resource):
                     z.extractall(tmp_dir)
                     src_file_path = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
                     # find just the combined JSON
-                    json2sra.convert(open(src_file_path), target_tmp_dir, config_dir)
+                    json2sra.convert(open(src_file_path), target_tmp_dir, validate_first=False)
                     memf = io.BytesIO()
                     with zipfile.ZipFile(memf, 'w') as zf:
                         sub_path = os.path.splitext(z.filelist[0].filename)[0]
@@ -415,10 +415,7 @@ class ValidateIsaJSON(Resource):
                 file_path = _write_request_data(request, tmp_dir, tmp_file)
                 if file_path is None:
                     return Response(500)
-                log_msg_stream = isajson.validate(open(file_path))
-                result = {
-                    "result:": log_msg_stream.getvalue()
-                }
+                result = isajson.validate(open(file_path))
                 response = jsonify(result)
             except Exception:
                 response = Response(status=500)
@@ -482,10 +479,7 @@ class ValidateIsaTab(Resource):
                             src_file_path = os.path.normpath(os.path.join(tmp_dir, i_file_list[0]))
                             fp = open(src_file_path)
                             # find just the combined JSON
-                            log_msg_stream = isatab.validate2(fp)
-                            result = {
-                                "result:": log_msg_stream.getvalue()
-                            }
+                            result = isatab.validate(fp)
                             response = jsonify(result)
                         else:
                             raise Exception("Could not resolve investigation file entry point")
