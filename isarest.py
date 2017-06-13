@@ -8,7 +8,8 @@ from flask import Flask, Response, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 import config
-from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, mw2isa
+from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, mw2isa, sampletab2isatab, sampletab2json, \
+    isatab2sampletab, json2sampletab
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
 
@@ -494,23 +495,20 @@ class ImportMWToIsaTab(Resource):
 
     """Convert to ISA tab (zip) to SRA XML (zip)"""
     @swagger.operation(
-        summary='Convert ISA JSON to SRA',
-        notes='Converts a ISA JSON file with data (ZIP) to SRA XML files (ZIP)',
+        summary='Import from Metabolomics Workbench to ISA-Tab',
+        notes='Imports a study from Metabolomics Workbench to ISA-Tab',
         parameters=[
             {
-                "name": "body",
-                "description": "Given a ZIP file containing valid ISA tab files, convert and return a valid set of SRA XML files (zip)",
-                "required": True,
-                "allowMultiple": False,
-                "dataType": "ISA tab (ZIP)",
-                "supportedContentTypes": ['application/zip'],
-                "paramType": "body"
+                "name": "studyid",
+                "description": "Study ID",
+                "type": "String",
+                "required": True
             }
         ],
         responseMessages=[
             {
                 "code": 200,
-                "message": "OK. The converted SRA content should be in the returned ZIP."
+                "message": "OK. The converted MW content should be in the returned ZIP."
             },
             {
                 "code": 415,
@@ -519,8 +517,8 @@ class ImportMWToIsaTab(Resource):
         ]
     )
     def get(self, studyid):
+        tmp_dir = _create_temp_dir()
         try:
-            tmp_dir = _create_temp_dir()
             mw2isa.mw2isa_convert(studyid=studyid, outputdir=tmp_dir, dl_option="no", validate_option="no")
             memf = io.BytesIO()
             with zipfile.ZipFile(memf, 'w') as zf:
@@ -537,6 +535,245 @@ class ImportMWToIsaTab(Resource):
         return response
 
 
+class ConvertSampleTabToIsaTab(Resource):
+
+    """Convert SampleTab to ISA-Tab"""
+    @swagger.operation(
+        summary='Convert SampleTab to ISA-Tab',
+        notes='Converts a SampleTab to a set of ISA-Tab files (ZIP)',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a SampleTab file convert and return a valid set of ISA-Tab files (zip)",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "SampleTab",
+                "supportedContentTypes": ['text/tab-separated-values'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted SampleTab content should be in the returned ZIP."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=500)
+        tmp_file = str(uuid.uuid4()) + ".txt"
+        tmp_dir = _create_temp_dir()
+        target_tmp_dir = _create_temp_dir()
+        try:
+            # Write request data to file
+            file_path = _write_request_data(request, tmp_dir, tmp_file)
+            if file_path is None:
+                raise IOError("Could not create temporary file " + file_path)
+            sampletab2isatab.convert(open(file_path), target_tmp_dir)
+            memf = io.BytesIO()
+            with zipfile.ZipFile(memf, 'w') as zf:
+                for file in os.listdir(target_tmp_dir):
+                    print("Adding {} to zip".format(os.path.join(target_tmp_dir, file)))
+                    zf.write(os.path.join(target_tmp_dir, file), file)
+            memf.seek(0)
+            response = send_file(memf, mimetype='application/zip')
+        except TypeError as t:
+            print("TypeError: {}".format(t))
+            response = Response(status=415)
+        except Exception as e:
+            print("Error: {}".format(e))
+            response = Response(status=500)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            shutil.rmtree(target_tmp_dir, ignore_errors=True)
+            return response
+
+
+class ConvertSampleTabToJson(Resource):
+
+    """Convert SampleTab to ISA-JSON"""
+    @swagger.operation(
+        summary='Convert SampleTab to ISA-JSON',
+        notes='Converts a SampleTab to a set of ISA-JSON',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a SampleTab file convert and return a valid ISA-JSON",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "SampleTab",
+                "supportedContentTypes": ['text/tab-separated-values'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted SampleTab content should be in the returned ISA-JSON."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=500)
+        tmp_file = str(uuid.uuid4()) + ".txt"
+        tmp_dir = _create_temp_dir()
+        tmp_json_file = str(uuid.uuid4()) + ".json"
+        try:
+            # Write request data to file
+            file_path = _write_request_data(request, tmp_dir, tmp_file)
+            if file_path is None:
+                raise IOError("Could not create temporary file " + file_path)
+            with open(os.path.join(tmp_dir, tmp_json_file), 'w') as json_fp:
+                sampletab2json.convert(open(file_path), json_fp)
+            with open(os.path.join(tmp_dir, tmp_json_file), 'r') as json_fp:
+                response = jsonify(json.load(json_fp))
+        except TypeError as t:
+            print("TypeError: {}".format(t))
+            response = Response(status=415)
+        except Exception as e:
+            print("Error: {}".format(e))
+            response = Response(status=500)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return response
+
+
+class ConvertJsonToSampleTab(Resource):
+
+    """Convert to ISA-JSON to SampleTab"""
+    @swagger.operation(
+        summary='Convert ISA-JSON to SampleTab',
+        notes='Converts a ISA-JSON file to SampleTab',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a valid ISA-JSON file, convert and return a SampleTab file",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA-JSON",
+                "supportedContentTypes": ['application/json'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted ISA-JSON content should be in the returned SampleTab."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=500)
+        # Create temporary directory
+        tmp_dir = _create_temp_dir()
+        target_tmp_dir = _create_temp_dir()
+        try:
+            if tmp_dir is None:
+                raise IOError("Could not create temporary directory " + tmp_dir)
+            if not request.mimetype == "application/json":
+                raise TypeError("Incorrect media type received. Got " + request.mimetype +
+                                ", expected application/json")
+            else:
+                # Write request data to file
+                file_path = _write_request_data(request, tmp_dir, 'in.json')
+                if file_path is None:
+                    raise IOError("Could not create temporary file " + file_path)
+                with open(file_path) as json_fp:
+                    with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_fp:
+                        json2sampletab.convert(json_fp, st_fp)
+                with open(os.path.join(tmp_dir, 'out.txt'), 'r') as st_fp:
+                    response = send_file(st_fp, mimetype='text/tab-separated-values')
+        except TypeError as t:
+            print("TypeError: {}".format(t))
+            response = Response(status=415)
+        except Exception as e:
+            print("Error: {}".format(e))
+            response = Response(status=500)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            shutil.rmtree(target_tmp_dir, ignore_errors=True)
+            return response
+
+
+class ConvertIsaTabToSampleTab(Resource):
+
+    """Convert to ISA-JSON to SampleTab"""
+    @swagger.operation(
+        summary='Convert ISA-Tab to SampleTab',
+        notes='Converts a ISA-Tab file to SampleTab',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a valid ISA-Tab file, convert and return a SampleTab file",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA-Tab (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted ISA-Tab content should be in the returned SampleTab."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=500)
+        # Create temporary directory
+        tmp_dir = _create_temp_dir()
+        target_tmp_dir = _create_temp_dir()
+        try:
+            if tmp_dir is None:
+                raise IOError("Could not create temporary directory " + tmp_dir)
+            if not request.mimetype == "application/zip":
+                raise TypeError("Incorrect media type received. Got " + request.mimetype +
+                                ", expected application/zip")
+            else:
+                # Write request data to file
+                file_path = _write_request_data(request, tmp_dir, 'in.zip')
+                if file_path is None:
+                    raise IOError("Could not create temporary file " + file_path)
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    # extract ISArchive files
+                    z.extractall(tmp_dir)
+                    i_file_list = [i.filename for i in z.filelist if 'i_' in i.filename and i.filename.endswith('.txt')]
+                    if len(i_file_list) == 1:
+                        src_file_path = os.path.normpath(os.path.join(tmp_dir, i_file_list[0]))
+                        with open(src_file_path) as fp:
+                            with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_fp:
+                                isatab2sampletab.convert(fp, st_fp)
+                with open(os.path.join(tmp_dir, 'out.txt'), 'r') as st_fp:
+                    response = send_file(st_fp, mimetype='text/tab-separated-values')
+        except TypeError as t:
+            print("TypeError: {}".format(t))
+            response = Response(status=415)
+        except Exception as e:
+            print("Error: {}".format(e))
+            response = Response(status=500)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            shutil.rmtree(target_tmp_dir, ignore_errors=True)
+            return response
+
+
 app = Flask(__name__)
 app.config.from_object(config)
 
@@ -549,6 +786,10 @@ api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
 api.add_resource(ValidateIsaJSON, '/api/v1/validate/json')
 api.add_resource(ValidateIsaTab, '/api/v1/validate/isatab')
 api.add_resource(ImportMWToIsaTab, '/api/v1/import/mw/<studyid>')
+api.add_resource(ConvertSampleTabToIsaTab, '/api/v1/convert/sampletab-to-isatab')
+api.add_resource(ConvertSampleTabToJson, '/api/v1/convert/sampletab-to-json')
+api.add_resource(ConvertJsonToSampleTab, '/api/v1/convert/json-to-sampletab')
+api.add_resource(ConvertIsaTabToSampleTab, '/api/v1/convert/isatab-to-sampletab')
 
 
 if __name__ == "__main__":
