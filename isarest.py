@@ -99,12 +99,12 @@ class ConvertTabToJson(Resource):
                         return Response(500)
                     z.extractall(tmp_dir)
                     # Convert
-                    src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    src_dir = os.path.normpath(tmp_dir)
                     J = isatab2json.convert(src_dir, validate_first=False, use_new_parser=True)
                     if J is None:
                         raise IOError("Could not generate JSON from input ISA-Tab")
             except Exception as e:
-                print(e)
+                print("Error: {}".format(e))
                 return Response(status=500)
             finally:
                 # cleanup generated directories
@@ -201,8 +201,9 @@ class ConvertTabToSra(Resource):
         response = Response(status=500)
         # Create temporary directory
         tmp_dir = _create_temp_dir()
+        target_tmp_dir = _create_temp_dir()
         try:
-            if tmp_dir is None:
+            if tmp_dir is None or target_tmp_dir is None:
                 raise IOError("Could not create temporary directory " + tmp_dir)
             if not request.mimetype == "application/zip":
                 raise TypeError("Incorrect media type received. Got " + request.mimetype + ", expected application/zip")
@@ -212,27 +213,28 @@ class ConvertTabToSra(Resource):
                 if file_path is None:
                     raise IOError("Could not create temporary file " + file_path)
 
-                # Setup path to configuration
-                config_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'isaconfig-default')
-
                 with zipfile.ZipFile(file_path, 'r') as z:
                     # extract ISArchive files
                     z.extractall(tmp_dir)
-                    src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    src_dir = os.path.normpath(tmp_dir)
                     # convert to SRA writes to /sra
-                    isatab2sra.convert(src_dir, tmp_dir)
+                    isatab2sra.convert(src_dir, target_tmp_dir, validate_first=False)
                     memf = io.BytesIO()
                     with zipfile.ZipFile(memf, 'w') as zf:
-                        for file in os.listdir(tmp_dir + '/sra/' + z.filelist[0].filename):
-                            zf.write(os.path.join(tmp_dir + '/sra/' + z.filelist[0].filename, file), file)
+                        for file in os.listdir(target_tmp_dir):
+                            print("Adding {} to zip".format(os.path.join(target_tmp_dir, file)))
+                            zf.write(os.path.join(target_tmp_dir, file), file)
                     memf.seek(0)
                     response = send_file(memf, mimetype='application/zip')
-        except TypeError:
+        except TypeError as t:
+            print("TypeError: {}".format(t))
             response = Response(status=415)
-        except Exception:
+        except Exception as e:
+            print("Error: {}".format(e))
             response = Response(status=500)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+            shutil.rmtree(target_tmp_dir, ignore_errors=True)
             return response
 
 
@@ -281,8 +283,6 @@ class ConvertJsonToSra(Resource):
                 if file_path is None:
                     raise IOError("Could not create temporary file " + file_path)
 
-                # Setup path to configuration
-                config_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'isaconfig-default')
                 with zipfile.ZipFile(file_path, 'r') as z:
                     # extract ISArchive files
                     z.extractall(tmp_dir)
@@ -354,7 +354,7 @@ class ConvertTabToCedar(Resource):
                         return Response(500)
                     z.extractall(tmp_dir)
                     # Convert
-                    src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
+                    src_dir = os.path.normpath(tmp_dir)
                     tab2cedar = ISATab2CEDAR('http://www.isa-tools.org/')
                     tab2cedar.createCEDARjson(src_dir, src_dir, True)
                     # return just the combined JSON
@@ -364,7 +364,8 @@ class ConvertTabToCedar(Resource):
                         combined_json = json.load(open(combined_json_file))
                     else:
                         raise IOError("More than one .json was output - cannot disambiguate what to return")
-            except Exception:
+            except Exception as e:
+                print("Error: {}".format(e))
                 return Response(status=500)
             finally:
                 # cleanup generated directories
