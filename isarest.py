@@ -84,7 +84,7 @@ class ConvertTabToJson(Resource):
         if request.mimetype == "application/zip":
             tmp_dir = None
             tmp_file = None
-            combined_json = None
+            J = None
             try:
                 # Write request data to file
                 tmp_file = str(uuid.uuid4()) + ".zip"
@@ -100,14 +100,9 @@ class ConvertTabToJson(Resource):
                     z.extractall(tmp_dir)
                     # Convert
                     src_dir = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
-                    isatab2json.convert(src_dir, src_dir, validate_first=False, use_new_parser=True)
-                    # return just the combined JSON
-                    files = [f for f in os.listdir(src_dir) if f.endswith('.json')]
-                    if len(files) == 1:  # current assumption is that only one JSON should exist to know what to return
-                        combined_json_file = os.path.join(src_dir, files[0])
-                        combined_json = json.load(open(combined_json_file))
-                    else:
-                        raise IOError("More than one .json was output - cannot disambiguate what to return")
+                    J = isatab2json.convert(src_dir, validate_first=False, use_new_parser=True)
+                    if J is None:
+                        raise IOError("Could not generate JSON from input ISA-Tab")
             except Exception as e:
                 print(e)
                 return Response(status=500)
@@ -118,7 +113,7 @@ class ConvertTabToJson(Resource):
                     os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
                 except:
                     pass
-            response = jsonify(combined_json)
+            response = jsonify(J)
         return response
 
 
@@ -496,8 +491,8 @@ app.config.from_object(config)
 api = swagger.docs(Api(app), apiVersion='0.1')
 api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
 api.add_resource(ConvertJsonToTab, '/api/v1/convert/json-to-tab')
-api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
-api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
+# api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
+# api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
 api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
 api.add_resource(ValidateIsaJSON, '/api/v1/validate/json')
 api.add_resource(ValidateIsaTab, '/api/v1/validate/isatab')
