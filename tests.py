@@ -121,8 +121,24 @@ class ImportMWTests(BaseConverterTestCase):
         self.assertEqual(response.mimetype, 'application/zip')
 
     def test_unknown_resource(self):
-        response = self.app.post(path='/api/v1/import/mw/000367zzzzz')
-        self.assertEqual(response.status_code, 404)
+        response = self.app.post(path='/api/v1/import/mw/ST0001')
+        self.assertEqual(response.status_code, 405)
+
+
+class SampleTabTests(BaseConverterTestCase):
+
+    def test_convert_sampletab2isatab(self):
+        pass
+
+    def test_convert_sampletab2json(self):
+        pass
+
+    def test_convert_isatab2sampletab(self):
+        pass
+
+    def test_convert_json2sampletab(self):
+        pass
+
 
 if __name__ == '__main__':
     unittest.main()
