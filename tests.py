@@ -113,5 +113,16 @@ class IsaTabValidatorTests(BaseConverterTestCase):
         self.assertEqual(response.status_code, 415)
 
 
+class ImportMWTests(BaseConverterTestCase):
+
+    def test_import_mw2isatab(self):
+        response = self.app.get(path='/api/v1/import/mw/ST000367')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_unknown_resource(self):
+        response = self.app.post(path='/api/v1/import/mw/000367zzzzz')
+        self.assertEqual(response.status_code, 404)
+
 if __name__ == '__main__':
     unittest.main()

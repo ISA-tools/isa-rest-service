@@ -8,7 +8,7 @@ from flask import Flask, Response, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 import config
-from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra
+from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, mw2isa
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
 
@@ -489,6 +489,54 @@ class ValidateIsaTab(Resource):
                 shutil.rmtree(tmp_dir, ignore_errors=True)
         return response
 
+
+class ImportMWToIsaTab(Resource):
+
+    """Convert to ISA tab (zip) to SRA XML (zip)"""
+    @swagger.operation(
+        summary='Convert ISA JSON to SRA',
+        notes='Converts a ISA JSON file with data (ZIP) to SRA XML files (ZIP)',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a ZIP file containing valid ISA tab files, convert and return a valid set of SRA XML files (zip)",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "ISA tab (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted SRA content should be in the returned ZIP."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def get(self, studyid):
+        try:
+            tmp_dir = _create_temp_dir()
+            mw2isa.mw2isa_convert(studyid=studyid, outputdir=tmp_dir, dl_option="no", validate_option="no")
+            memf = io.BytesIO()
+            with zipfile.ZipFile(memf, 'w') as zf:
+                for file in os.listdir(os.path.join(tmp_dir, studyid)):
+                    print("Adding {} to zip".format(os.path.join(tmp_dir, studyid, file)))
+                    zf.write(os.path.join(tmp_dir, studyid, file), file)
+            memf.seek(0)
+            response = send_file(memf, mimetype='application/zip')
+        except Exception as e:
+            print("Error: {}".format(e))
+            response = Response(status=500)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        return response
+
+
 app = Flask(__name__)
 app.config.from_object(config)
 
@@ -500,6 +548,8 @@ api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
 api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
 api.add_resource(ValidateIsaJSON, '/api/v1/validate/json')
 api.add_resource(ValidateIsaTab, '/api/v1/validate/isatab')
+api.add_resource(ImportMWToIsaTab, '/api/v1/import/mw/<studyid>')
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
