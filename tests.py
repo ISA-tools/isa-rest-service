@@ -43,32 +43,32 @@ class JsonToTabConverterTests(BaseConverterTestCase):
         self.assertEqual(response.status_code, 415)
 
 
-# class TabToSraXmlConverterTests(BaseConverterTestCase):
-#
-#     def test_convert(self):
-#         response = self.app.post(path='/api/v1/convert/tab-to-sra', data=self.test_data_zip,
-#                                  headers={'Content-Type': 'application/zip'})
-#         self.assertEqual(response.status_code, 200)
-#         self.assertEqual(response.mimetype, 'application/zip')
-#
-#     def test_unsupported_content(self):
-#         response = self.app.post(path='/api/v1/convert/tab-to-sra', data=self.test_data_json,
-#                                  headers={'Content-Type': 'application/json'})
-#         self.assertEqual(response.status_code, 415)
-#
-#
-# class JsonToSraXmlConverterTests(BaseConverterTestCase):
-#
-#     def test_convert(self):
-#         response = self.app.post(path='/api/v1/convert/json-to-sra', data=self.test_data_json_zip,
-#                                  headers={'Content-Type': 'application/zip'})
-#         self.assertEqual(response.status_code, 200)
-#         self.assertEqual(response.mimetype, 'application/zip')
-#
-#     def test_unsupported_content(self):
-#         response = self.app.post(path='/api/v1/convert/json-to-sra', data=self.test_data_json,
-#                                  headers={'Content-Type': 'application/json'})
-#         self.assertEqual(response.status_code, 415)
+class TabToSraXmlConverterTests(BaseConverterTestCase):
+
+    def test_convert(self):
+        response = self.app.post(path='/api/v1/convert/tab-to-sra', data=self.test_data_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_unsupported_content(self):
+        response = self.app.post(path='/api/v1/convert/tab-to-sra', data=self.test_data_json,
+                                 headers={'Content-Type': 'application/json'})
+        self.assertEqual(response.status_code, 415)
+
+
+class JsonToSraXmlConverterTests(BaseConverterTestCase):
+
+    def test_convert(self):
+        response = self.app.post(path='/api/v1/convert/json-to-sra', data=self.test_data_json_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_unsupported_content(self):
+        response = self.app.post(path='/api/v1/convert/json-to-sra', data=self.test_data_json,
+                                 headers={'Content-Type': 'application/json'})
+        self.assertEqual(response.status_code, 415)
 
 
 class TabToCedarConverterTests(BaseConverterTestCase):

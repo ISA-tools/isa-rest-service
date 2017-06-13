@@ -288,17 +288,20 @@ class ConvertJsonToSra(Resource):
                     z.extractall(tmp_dir)
                     src_file_path = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
                     # find just the combined JSON
-                    json2sra.convert(open(src_file_path), target_tmp_dir, validate_first=False)
-                    memf = io.BytesIO()
-                    with zipfile.ZipFile(memf, 'w') as zf:
-                        sub_path = os.path.splitext(z.filelist[0].filename)[0]
-                        for file in os.listdir(target_tmp_dir + '/sra/' + sub_path):
-                            zf.write(os.path.join(target_tmp_dir + '/sra/' + sub_path, file), file)
-                    memf.seek(0)
-                    response = send_file(memf, mimetype='application/zip')
+                    with open(src_file_path) as json_fp:
+                        json2sra.convert(json_fp, target_tmp_dir, validate_first=False)
+                        memf = io.BytesIO()
+                        with zipfile.ZipFile(memf, 'w') as zf:
+                            for file in os.listdir(target_tmp_dir):
+                                print("Adding {} to zip".format(os.path.join(target_tmp_dir, file)))
+                                zf.write(os.path.join(target_tmp_dir, file), file)
+                        memf.seek(0)
+                        response = send_file(memf, mimetype='application/zip')
         except TypeError as t:
+            print("TypeError: {}".format(t))
             response = Response(status=415)
         except Exception as e:
+            print("Error: {}".format(e))
             response = Response(status=500)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -491,8 +494,8 @@ app.config.from_object(config)
 api = swagger.docs(Api(app), apiVersion='0.2')
 api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
 api.add_resource(ConvertJsonToTab, '/api/v1/convert/json-to-tab')
-# api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
-# api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
+api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
+api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
 api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
 api.add_resource(ValidateIsaJSON, '/api/v1/validate/json')
 api.add_resource(ValidateIsaTab, '/api/v1/validate/isatab')
