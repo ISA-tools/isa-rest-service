@@ -777,7 +777,7 @@ class ConvertIsaTabToSampleTab(Resource):
 app = Flask(__name__)
 app.config.from_object(config)
 
-api = swagger.docs(Api(app), apiVersion='0.2')
+api = swagger.docs(Api(app), apiVersion='0.8')
 api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
 api.add_resource(ConvertJsonToTab, '/api/v1/convert/json-to-tab')
 api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
