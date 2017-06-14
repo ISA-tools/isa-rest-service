@@ -11,6 +11,7 @@ class BaseConverterTestCase(unittest.TestCase):
         self.test_data_json = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.json'), 'rb').read()
         self.test_data_json_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3_json.zip'), 'rb').read()
         self.test_sampletab = open(os.path.join(os.path.dirname(__file__), 'testdata/GSB-3.txt'), 'rb').read()
+        self.test_magetab_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/E-MEXP-31.zip'), 'rb').read()
 
     def tearDown(self):
         pass
@@ -151,6 +152,33 @@ class SampleTabTests(BaseConverterTestCase):
                                  headers={'Content-Type': 'application/json'})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, 'text/tab-separated-values')
+
+
+class MageTabTests(BaseConverterTestCase):
+
+    def test_convert_magetab2isatab(self):
+        response = self.app.post(path='/api/v1/convert/magetab-to-isatab', data=self.test_magetab_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_convert_magetab2json(self):
+        response = self.app.post(path='/api/v1/convert/magetab-to-json', data=self.test_magetab_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/json')
+
+    def test_convert_isatab2magetab(self):
+        response = self.app.post(path='/api/v1/convert/isatab-to-magetab', data=self.test_data_zip,
+                                 headers={'Content-Type': 'application/zip'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_convert_json2magetab(self):
+        response = self.app.post(path='/api/v1/convert/json-to-magetab', data=self.test_data_json,
+                                 headers={'Content-Type': 'application/json'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
 
 
 if __name__ == '__main__':
