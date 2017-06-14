@@ -9,7 +9,7 @@ from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 import config
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, mw2isa, sampletab2isatab, sampletab2json, \
-    isatab2sampletab, json2sampletab
+    isatab2sampletab, json2sampletab, magetab2json
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
 
@@ -774,6 +774,74 @@ class ConvertIsaTabToSampleTab(Resource):
             return response
 
 
+class ConvertMageTabToJson(Resource):
+
+    """Convert MAGE-TAB (zip) to ISA-JSON"""
+    @swagger.operation(
+        summary='Convert MAGE-TAB to JSON',
+        notes='Converts a ZIP file containing a collection of MAGE-TAB files to ISA-JSON',
+        parameters=[
+            {
+                "name": "body",
+                "description": "Given a ZIP file containing valid MAGE-TAB files, convert and return a valid ISA-JSON",
+                "required": True,
+                "allowMultiple": False,
+                "dataType": "MAGE-TAB (ZIP)",
+                "supportedContentTypes": ['application/zip'],
+                "paramType": "body"
+            }
+        ],
+        responseMessages=[
+            {
+                "code": 200,
+                "message": "OK. The converted MAGE-TAB content should be in the returned JSON."
+            },
+            {
+                "code": 415,
+                "message": "Media not supported. Unexpected MIME type sent."
+            }
+        ]
+    )
+    def post(self):
+        response = Response(status=415)
+        if request.mimetype == "application/zip":
+            tmp_dir = None
+            tmp_file = None
+            J = None
+            try:
+                # Write request data to file
+                tmp_file = str(uuid.uuid4()) + ".zip"
+                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
+                if file_path is None:
+                    return Response(500)
+                # Extract ISArchive files
+                with zipfile.ZipFile(file_path, 'r') as z:
+                    # Create temporary directory
+                    tmp_dir = _create_temp_dir()
+                    if tmp_dir is None:
+                        return Response(500)
+                    z.extractall(tmp_dir)
+                    # Convert
+                    src_dir = os.path.normpath(tmp_dir)
+                    files = [f for f in os.listdir(src_dir) if f.endswith('.idf.txt')]
+                    if len(files) == 1:
+                        J = magetab2json.convert(os.path.join(src_dir, files[0]), 'protein microarray', 'protein expression profiling')
+                    if J is None:
+                        raise IOError("Could not generate JSON from input MAGE-TAB")
+            except Exception as e:
+                print("Error: {}".format(e))
+                return Response(status=500)
+            finally:
+                # cleanup generated directories
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
+                except:
+                    pass
+            response = jsonify(J)
+        return response
+
+
 app = Flask(__name__)
 app.config.from_object(config)
 
@@ -790,7 +858,7 @@ api.add_resource(ConvertSampleTabToIsaTab, '/api/v1/convert/sampletab-to-isatab'
 api.add_resource(ConvertSampleTabToJson, '/api/v1/convert/sampletab-to-json')
 api.add_resource(ConvertJsonToSampleTab, '/api/v1/convert/json-to-sampletab')
 api.add_resource(ConvertIsaTabToSampleTab, '/api/v1/convert/isatab-to-sampletab')
-
+api.add_resource(ConvertMageTabToJson, '/api/v1/convert/magetab-to-json')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
