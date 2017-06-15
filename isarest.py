@@ -631,8 +631,9 @@ class ConvertSampleTabToJson(Resource):
             file_path = _write_request_data(request, tmp_dir, tmp_file)
             if file_path is None:
                 raise IOError("Could not create temporary file " + file_path)
-            with open(os.path.join(tmp_dir, tmp_json_file), 'w') as json_fp:
-                sampletab2json.convert(open(file_path), json_fp)
+            with open(file_path, 'r') as input_fp:
+                with open(os.path.join(tmp_dir, tmp_json_file), 'w') as json_fp:
+                    sampletab2json.convert(input_fp, json_fp)
             with open(os.path.join(tmp_dir, tmp_json_file), 'r') as json_fp:
                 response = jsonify(json.load(json_fp))
         except TypeError as t:
@@ -758,10 +759,9 @@ class ConvertIsaTabToSampleTab(Resource):
                     if len(i_file_list) == 1:
                         src_file_path = os.path.normpath(os.path.join(tmp_dir, i_file_list[0]))
                         with open(src_file_path) as fp:
-                            with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_fp:
-                                isatab2sampletab.convert(fp, st_fp)
-                with open(os.path.join(tmp_dir, 'out.txt'), 'r') as st_fp:
-                    response = send_file(st_fp, mimetype='text/tab-separated-values')
+                            with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_out_fp:
+                                isatab2sampletab.convert(fp, st_out_fp)
+                        response = send_file(os.path.join(tmp_dir, 'out.txt'), mimetype='text/tab-separated-values')
         except TypeError as t:
             print("TypeError: {}".format(t))
             response = Response(status=415)

@@ -21,7 +21,7 @@ class IsaRestClient:
             client.convert_tab_to_json(open('testdata/BII-S-3.zip', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/tab-to-json',
-                                 headers={'content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
+                                 headers={'Content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.json()
@@ -42,7 +42,7 @@ class IsaRestClient:
             client.convert_json_to_tab(open('testdata/BII-S-3.json', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/json-to-tab',
-                                 headers={'content-type': 'application/json'}, data=isa_json_bytes, verify=False)
+                                 headers={'Content-type': 'application/json'}, data=isa_json_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.content
@@ -63,7 +63,7 @@ class IsaRestClient:
             client.convert_json_to_tab(open('testdata/BII-S-3_json.zip', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/json-to-sra',
-                                 headers={'content-type': 'application/zip'}, data=isa_json_zip_bytes, verify=False)
+                                 headers={'Content-type': 'application/zip'}, data=isa_json_zip_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.content
@@ -84,7 +84,7 @@ class IsaRestClient:
             client.convert_json_to_tab(open('testdata/BII-S-3_json.zip', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/tab-to-sra',
-                                 headers={'content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
+                                 headers={'Content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.content
@@ -105,7 +105,7 @@ class IsaRestClient:
             client.convert_tab_to_json(open('testdata/BII-S-3.zip', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/tab-to-cedar',
-                                 headers={'content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
+                                 headers={'Content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.json()
@@ -126,7 +126,7 @@ class IsaRestClient:
             client.validate_json(open('testdata/BII-S-3.json', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/validate/json',
-                                 headers={'content-type': 'application/json'}, data=isa_json_bytes, verify=False)
+                                 headers={'Content-type': 'application/json'}, data=isa_json_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             print(response.content)
@@ -143,7 +143,7 @@ class IsaRestClient:
             client.validate_tab(open('testdata/BII-S-3.zip', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/validate/isatab',
-                                 headers={'content-type': 'application/zip'}, data=isatab_zip_bytes, verify=False)
+                                 headers={'Content-type': 'application/zip'}, data=isatab_zip_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             print(response.content)
@@ -160,7 +160,7 @@ class IsaRestClient:
             client.convert_sampletab_to_tab(open('testdata/GSB-3.txt', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/sampletab-to-isatab',
-                                 headers={'content-type': 'text/tab-separated-values'}, data=sampletab_bytes, verify=False)
+                                 headers={'Content-type': 'text/tab-separated-values'}, data=sampletab_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.content
@@ -181,7 +181,7 @@ class IsaRestClient:
             client.convert_sampletab_to_json(open('testdata/GSB-3.txt', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/sampletab-to-json',
-                                 headers={'content-type': 'text/tab-separated-values'}, data=sampletab_bytes, verify=False)
+                                 headers={'Content-type': 'text/tab-separated-values'}, data=sampletab_bytes, verify=False)
         print("HTTP response code: " + str(response.status_code))
         if response.ok:
             data = response.json()
@@ -206,6 +206,48 @@ class IsaRestClient:
         if response.ok:
             data = response.content
             outpath = os.path.join(self.dl_folder, 'out.zip')
+            with open(outpath, 'wb') as f:
+                f.write(data)
+            return os.path.abspath(f.name)
+
+    def convert_tab_to_sampletab(self, zipped_tab_bytes):
+        """
+        :param isa_json_zip_bytes: Bytes of zip file containing ISA JSON and data files to sent to converter service
+        :return: Absolute path for SampleTab file named out.txt returned by converter service
+
+        Example usage
+
+            from isarest_client import IsaRestClient
+            client = IsaRestClient(dl_folder='tmp/')
+            client.convert_tab_to_sampletab(open('testdata/BII-S-3_json.zip', 'rb').read())
+        """
+        response = requests.post(self.baseurl + '/api/v1/convert/isatab-to-sampletab',
+                                 headers={'Content-type': 'application/zip'}, data=zipped_tab_bytes, verify=False)
+        print("HTTP response code: " + str(response.status_code))
+        if response.ok:
+            data = response.content
+            outpath = os.path.join(self.dl_folder, 'out.txt')
+            with open(outpath, 'wb') as f:
+                f.write(data)
+            return os.path.abspath(f.name)
+
+    def convert_json_to_sampletab(self, isa_json_bytes):
+        """
+        :param isa_json_bytes: Bytes of zip file containing ISA tabs to sent to converter service
+        :return: Absolute path for local ZIP file named out.zip returned by converter service
+
+        Example usage
+
+            from isarest_client import IsaRestClient
+            client = IsaRestClient(dl_folder='tmp/')
+            client.convert_json_to_sampletab(open('testdata/BII-S-3.zip', 'rb').read())
+        """
+        response = requests.post(self.baseurl + '/api/v1/convert/json-to-sampletab',
+                                 headers={'Content-type': 'application/json'}, data=isa_json_bytes, verify=False)
+        print("HTTP response code: " + str(response.status_code))
+        if response.ok:
+            data = response.content
+            outpath = os.path.join(self.dl_folder, 'out.txt')
             with open(outpath, 'wb') as f:
                 f.write(data)
             return os.path.abspath(f.name)

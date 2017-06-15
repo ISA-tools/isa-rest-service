@@ -156,6 +156,8 @@ class SampleTabTests(BaseConverterTestCase):
 
 class MageTabTests(BaseConverterTestCase):
 
+    # FIXME: All tests do not pass, probably relates to https://github.com/ISA-tools/isa-api/issues/217
+
     def test_convert_magetab2isatab(self):
         response = self.app.post(path='/api/v1/convert/magetab-to-isatab', data=self.test_magetab_zip,
                                  headers={'Content-Type': 'application/zip'})
