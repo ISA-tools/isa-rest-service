@@ -825,7 +825,8 @@ class ConvertMageTabToJson(Resource):
                     src_dir = os.path.normpath(tmp_dir)
                     files = [f for f in os.listdir(src_dir) if f.endswith('.idf.txt')]
                     if len(files) == 1:
-                        J = magetab2json.convert(os.path.join(src_dir, files[0]), 'protein microarray', 'protein expression profiling')
+                        with open(os.path.join(src_dir, files[0])) as source_fp:
+                            J = magetab2json.convert(source_fp, 'protein microarray', 'protein expression profiling')
                     if J is None:
                         raise IOError("Could not generate JSON from input MAGE-TAB")
             except Exception as e:
