@@ -168,3 +168,24 @@ class IsaRestClient:
             with open(outpath, 'wb') as f:
                 f.write(data)
             return os.path.abspath(f.name)
+
+    def convert_sampletab_to_json(self, sampletab_bytes):
+        """
+        :param sampletab_bytes: Bytes of SampleTab input file to sent to converter service
+         :return: Absolute path for local JSON file returned by converter service called out.json
+
+        Example usage
+
+            from isarest_client import IsaRestClient
+            client = IsaRestClient(dl_folder='tmp/')
+            client.convert_sampletab_to_tab(open('testdata/GSB-3.txt', 'rb').read())
+        """
+        response = requests.post(self.baseurl + '/api/v1/convert/sampletab-to-json',
+                                 headers={'content-type': 'text/tab-separated-values'}, data=sampletab_bytes, verify=False)
+        print("HTTP response code: " + str(response.status_code))
+        if response.ok:
+            data = response.json()
+            outpath = os.path.join(self.dl_folder, 'out.json')
+            with open(outpath, 'w') as f:
+                json.dump(data, f)
+            return os.path.abspath(f.name)
