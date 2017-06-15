@@ -178,7 +178,7 @@ class IsaRestClient:
 
             from isarest_client import IsaRestClient
             client = IsaRestClient(dl_folder='tmp/')
-            client.convert_sampletab_to_tab(open('testdata/GSB-3.txt', 'rb').read())
+            client.convert_sampletab_to_json(open('testdata/GSB-3.txt', 'rb').read())
         """
         response = requests.post(self.baseurl + '/api/v1/convert/sampletab-to-json',
                                  headers={'content-type': 'text/tab-separated-values'}, data=sampletab_bytes, verify=False)
@@ -188,4 +188,24 @@ class IsaRestClient:
             outpath = os.path.join(self.dl_folder, 'out.json')
             with open(outpath, 'w') as f:
                 json.dump(data, f)
+            return os.path.abspath(f.name)
+
+    def import_mw_to_tab(self, accession):
+        """
+        :param accession: Accession ID for study in MetabolomicsWorkbench
+        :return: Absolute path for local ZIP file named out.zip returned by converter service
+
+        Example usage
+
+            from isarest_client import IsaRestClient
+            client = IsaRestClient(dl_folder='tmp/')
+            client.import_mw_to_tab('ST000367')
+        """
+        response = requests.get(self.baseurl + '/api/v1/import/mw/' + accession)
+        print("HTTP response code: " + str(response.status_code))
+        if response.ok:
+            data = response.content
+            outpath = os.path.join(self.dl_folder, 'out.zip')
+            with open(outpath, 'wb') as f:
+                f.write(data)
             return os.path.abspath(f.name)
