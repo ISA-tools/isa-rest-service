@@ -1,2 +1,2 @@
-flask_restful_swagger
-isatools
+-e git+https://github.com/rantav/flask-restful-swagger#egg=flask_restful_swagger
+isatools==0.8
