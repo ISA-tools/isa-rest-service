@@ -8,8 +8,10 @@ from flask import Flask, Response, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 import config
-from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, mw2isa, sampletab2isatab, sampletab2json, \
+
+from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, sampletab2isatab, sampletab2json, \
     isatab2sampletab, json2sampletab, magetab2json
+from isatools.net import mw2isa
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
 
@@ -825,8 +827,7 @@ class ConvertMageTabToJson(Resource):
                     src_dir = os.path.normpath(tmp_dir)
                     files = [f for f in os.listdir(src_dir) if f.endswith('.idf.txt')]
                     if len(files) == 1:
-                        with open(os.path.join(src_dir, files[0])) as source_fp:
-                            J = magetab2json.convert(source_fp, 'protein microarray', 'protein expression profiling')
+                        J = magetab2json.convert(os.path.join(src_dir, files[0]))
                     if J is None:
                         raise IOError("Could not generate JSON from input MAGE-TAB")
             except Exception as e:
