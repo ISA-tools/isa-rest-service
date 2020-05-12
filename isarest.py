@@ -15,6 +15,8 @@ from isatools.net import mw2isa
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
 
+from api.create import ISAStudyDesign
+
 
 def _allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1] in config.ALLOWED_EXTENSIONS
@@ -861,6 +863,7 @@ api.add_resource(ConvertSampleTabToJson, '/api/v1/convert/sampletab-to-json')
 api.add_resource(ConvertJsonToSampleTab, '/api/v1/convert/json-to-sampletab')
 api.add_resource(ConvertIsaTabToSampleTab, '/api/v1/convert/isatab-to-sampletab')
 api.add_resource(ConvertMageTabToJson, '/api/v1/convert/magetab-to-json')
+api.add_resource(ISAStudyDesign, 'api/v1/isa-study-design')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)

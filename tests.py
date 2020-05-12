@@ -1,3 +1,4 @@
+import json
 import unittest
 import os
 from isarest import app
@@ -183,6 +184,45 @@ class MageTabTests(BaseConverterTestCase):
     #                              headers={'Content-Type': 'application/json'})
     #     self.assertEqual(response.status_code, 200)
     #     self.assertEqual(response.mimetype, 'application/zip')
+
+
+class ISAStudyDesignTest(unittest.TestCase):
+
+    def setUp(self):
+        self.app = app.test_client()
+        with open(os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), 'testdata', 'study-design-config', 'design-correct-two-arms.json'
+            )
+        )) as fp:
+            self.design_config = json.load(fp)
+
+    def test_send_isa_json(self):
+        response = self.app.post(
+            path='api/v1/isa-study-design',
+            data=dict(responseFormat='json', studyDesignConfig=self.design_config),
+            headers={'Content-Type': 'application/json'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_send_isa_tab(self):
+        response = self.app.post(
+            path='api/v1/isa-study-design',
+            data=dict(responseFormat='tab', studyDesignConfig=self.design_config),
+            headers={'Content-Type': 'application/json'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_send_isa_json_and_tab(self):
+        response = self.app.post(
+            path='api/v1/isa-study-design',
+            data=dict(responseFormat='tab+json', studyDesignConfig=self.design_config),
+            headers={'Content-Type': 'application/json'}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
 
 
 if __name__ == '__main__':
