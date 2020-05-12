@@ -1,0 +1,273 @@
+{
+  "type": "here you can describe your type of design",
+  "elements": [
+    {
+      "id": "#element/screen",
+      "name": "screen",
+      "type": "screen",
+      "duration": 7,
+      "durationUnit": "days"
+    },
+    {
+      "id": "#element/first_treatment",
+      "name": "first treatment",
+      "type": "chemical intervention",
+      "agent": "test drug",
+      "intensity": 10,
+      "intensityUnit": "mg/day",
+      "duration": 30,
+      "durationUnit": "days"
+    },
+    {
+      "id": "#element/surgical_treatment",
+      "name": "surgical treatment",
+      "type": "surgical intervention",
+      "agent": "surgery"
+    },
+    {
+      "id": "#element/follow-up",
+      "name": "follow-up",
+      "type": "follow-up",
+      "duration": 3,
+      "durationUnit": "months"
+    },
+    {
+      "id": "#element/control_treatment",
+      "name": "control treatment",
+      "type": "chemical intervention",
+      "agent": "placebo",
+      "intensity": 10,
+      "intensityUnit": "mg/day",
+      "duration": 30,
+      "durationUnit": "days"
+    }
+  ],
+  "events": [
+    {
+      "id": "#event/sampling_0",
+      "action": "sampling",
+      "input": "subject",
+      "output": "liver sample",
+      "outputSize": 1
+    },
+    {
+      "id": "#event/sampling_1",
+      "action": "sampling",
+      "input": "subject",
+      "output": "blood sample",
+      "outputSize": 3
+    },
+    {
+      "id": "#event/assay_0",
+      "action": "assay",
+      "template": {
+        "measurement_type": "metabolite profiling",
+        "technology_type": "mass spectrometry",
+        "workflow": [
+            [
+                "extraction",
+                {}
+            ],
+            [
+                "extract",
+                [
+                    {
+                        "node_type": "extract",
+                        "characteristics_category": "extract type",
+                        "characteristics_value": "polar fraction",
+                        "size": 1,
+                        "is_input_to_next_protocols": true
+                    },
+                    {
+                        "node_type": "extract",
+                        "characteristics_category": "extract type",
+                        "characteristics_value": "lipids",
+                        "size": 1,
+                        "is_input_to_next_protocols": true
+                    }
+                ]
+            ],
+            [
+                "labelling",
+                {
+                    "#replicates": 2
+                }
+            ],
+            [
+                "labelled extract",
+                [
+                    {
+                        "node_type": "labeled extract",
+                        "characteristics_category": "labelled extract type",
+                        "characteristics_value": "",
+                        "size": 1,
+                        "is_input_to_next_protocols": true
+                    }
+                ]
+            ],
+            [
+                "mass spectrometry",
+                {
+                    "#replicates": 2,
+                    "instrument": [
+                        "Agilent QTQF 6510"
+                    ],
+                    "injection_mode": [
+                        "FIA",
+                        "LC"
+                    ],
+                    "acquisition_mode": [
+                        "positive mode"
+                    ]
+                }
+            ],
+            [
+                "raw spectral data file",
+                [
+                    {
+                        "node_type": "data file",
+                        "size": 2,
+                        "is_input_to_next_protocols": false
+                    }
+                ]
+            ]
+        ]
+      }
+    },
+    {
+      "id": "#event/assay_1",
+      "action": "assay",
+      "template": {
+        "measurement_type": "metabolite profiling",
+        "technology_type": "nmr spectroscopy",
+        "workflow": [
+            [
+                "extraction",
+                {}
+            ],
+            [
+                "extract",
+                [
+                    {
+                        "node_type": "extract",
+                        "characteristics_category": "extract type",
+                        "characteristics_value": "supernatant",
+                        "size": 1,
+                        "is_input_to_next_protocols": true
+                    },
+                    {
+                        "node_type": "extract",
+                        "characteristics_category": "extract type",
+                        "characteristics_value": "pellet",
+                        "size": 1,
+                        "is_input_to_next_protocols": true
+                    }
+                ]
+            ],
+            [
+                "nmr spectroscopy",
+                {
+                    "#replicates": 2,
+                    "instrument": [
+                        "Bruker AvanceII 1 GHz"
+                    ],
+                    "pulse_sequence": [
+                        "CPMG",
+                        "watergate"
+                    ],
+                    "acquisition_mode": [
+                        "1D 13C NMR",
+                        "2D 13C-13C NMR"
+                    ]
+                }
+            ],
+            [
+                "raw spectral data file",
+                [
+                    {
+                        "node_type": "data file",
+                        "size": 1,
+                        "is_input_to_next_protocols": false
+                    }
+                ]
+            ]
+        ]
+      }
+    }
+  ],
+  "arms": [
+    {
+      "id": "#arm/treatment",
+      "name": "treatment",
+      "subjectType": "Human",
+      "size": 10,
+      "epochs": [
+        {
+          "elements": [
+            "#element/screen"
+          ],
+          "events": []
+        },
+        {
+          "elements": [
+            "#element/first_treatment"
+          ],
+          "events": []
+        },
+        {
+          "elements": [
+            "#element/surgical_treatment"
+          ],
+          "events": [
+            "#event/sampling_0",
+            "#event/assay_0"
+          ]
+        },
+        {
+          "elements": [
+            "#element/follow-up"
+          ],
+          "events": [
+            "#event/sampling_1",
+            "#event/assay_0",
+            "#event/assay_1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "#arm/control",
+      "name": "control",
+      "subjectType": "Human",
+      "size": 8,
+      "epochs": [
+        {
+          "elements": [
+            "#element/screen"
+          ],
+          "events": []
+        },
+        {
+          "elements": [
+            "#element/control_treatment"
+          ],
+          "events": []
+        },
+        {
+          "elements": [],
+          "events": []
+        },
+        {
+          "elements": [
+            "#element/follow-up"
+          ],
+          "events": [
+            "#event/sampling_1",
+            "#event/assay_0",
+            "#event/assay_1"
+          ]
+        }
+      ]
+    }
+  ]
+}
