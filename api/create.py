@@ -78,7 +78,7 @@ class ISAStudyDesign(Resource):
             study_design = generate_study_design_from_config(design_config)
             investigation = Investigation(studies=[study_design.generate_isa_study()])
             # TODO read the output type to understand whether the user wants ISA-tab or ISA-JSON
-            with TemporaryDirectory as temp_dir:
+            with TemporaryDirectory() as temp_dir:
                 if 'json' in res_format:
                     json_file_path = os.path.join(temp_dir, OUTPUT_JSON_FILE_NAME)
                     with open(json_file_path, 'w') as json_file:
