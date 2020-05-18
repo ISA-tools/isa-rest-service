@@ -204,7 +204,7 @@ class ISAStudyDesignTest(unittest.TestCase):
             json=req_data
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.mimetype, 'application/zip')
+        self.assertEqual(response.mimetype, 'application/json')
 
     def test_send_isa_tab(self):
         response = self.app.post(
@@ -217,7 +217,7 @@ class ISAStudyDesignTest(unittest.TestCase):
     def test_send_isa_json_and_tab(self):
         response = self.app.post(
             path='/api/v1/isa-study-design',
-            json=dict(responseFormat='tab+json', studyDesignConfig=self.design_config)
+            json=dict(responseFormat='all', studyDesignConfig=self.design_config)
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, 'application/zip')
