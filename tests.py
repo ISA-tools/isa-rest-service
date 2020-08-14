@@ -8,11 +8,16 @@ class BaseConverterTestCase(unittest.TestCase):
     """Base test case for testing the converters"""
     def setUp(self):
         self.app = app.test_client()
-        self.test_data_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.zip'), 'rb').read()
-        self.test_data_json = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.json'), 'rb').read()
-        self.test_data_json_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3_json.zip'), 'rb').read()
-        self.test_sampletab = open(os.path.join(os.path.dirname(__file__), 'testdata/GSB-3.txt'), 'rb').read()
-        self.test_magetab_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/E-MEXP-31.zip'), 'rb').read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.zip'), 'rb') as fp:
+            self.test_data_zip = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.json'), 'rb') as fp:
+            self.test_data_json = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3_json.zip'), 'rb') as fp:
+            self.test_data_json_zip = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/GSB-3.txt'), 'rb') as fp:
+            self.test_sampletab = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/E-MEXP-31.zip'), 'rb') as fp:
+            self.test_magetab_zip = fp.read()
 
     def tearDown(self):
         pass

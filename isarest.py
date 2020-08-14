@@ -7,6 +7,7 @@ import zipfile
 from flask import Flask, Response, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
+from flask_cors import CORS
 import config
 
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, sampletab2isatab, sampletab2json, \
@@ -848,6 +849,7 @@ class ConvertMageTabToJson(Resource):
 
 app = Flask(__name__)
 app.config.from_object(config)
+cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 api = swagger.docs(Api(app), apiVersion='0.8')
 api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
