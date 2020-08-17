@@ -4,7 +4,7 @@ import shutil
 import json
 import io
 import zipfile
-from flask import Flask, Response, request, jsonify, send_file
+from flask import Flask, Response, request, jsonify, send_file, make_response
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 from flask_cors import CORS
@@ -49,9 +49,8 @@ def _write_request_data(request_, tmp_dir, file_name):
 
 
 def _file_to_response(response, file_path, mimetype):
-    fd = open(file_path, 'rb')
-    response.set_data(fd.read())
-    fd.close()
+    with open(file_path, 'rb') as fd:
+        response.set_data(fd.read())
     response.headers.add('content-length', str(len(response.get_data())))
     response.mimetype = mimetype
     return response
@@ -161,7 +160,8 @@ class ConvertJsonToTab(Resource):
                 file_path = _write_request_data(request, tmp_dir, tmp_file)
                 if file_path is None:
                     return Response(500)
-                json2isatab.convert(open(file_path), tmp_dir)
+                with open(file_path) as fd:
+                    json2isatab.convert(fd, tmp_dir)
                 os.remove(file_path)
                 memf = io.BytesIO()
                 with zipfile.ZipFile(memf, 'w') as zf:
@@ -578,7 +578,8 @@ class ConvertSampleTabToIsaTab(Resource):
             file_path = _write_request_data(request, tmp_dir, tmp_file)
             if file_path is None:
                 raise IOError("Could not create temporary file " + file_path)
-            sampletab2isatab.convert(open(file_path), target_tmp_dir)
+            with open(file_path) as fd:
+                sampletab2isatab.convert(fd, target_tmp_dir)
             memf = io.BytesIO()
             with zipfile.ZipFile(memf, 'w') as zf:
                 for file in os.listdir(target_tmp_dir):
@@ -700,7 +701,10 @@ class ConvertJsonToSampleTab(Resource):
                     with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_fp:
                         json2sampletab.convert(json_fp, st_fp)
                 with open(os.path.join(tmp_dir, 'out.txt'), 'r') as st_fp:
-                    response = send_file(st_fp, mimetype='text/tab-separated-values')
+                    payload = st_fp.read()
+                    response = Response(
+                        payload, mimetype='text/tab-separated-values'
+                    )
         except TypeError as t:
             print("TypeError: {}".format(t))
             response = Response(status=415)
@@ -748,7 +752,7 @@ class ConvertIsaTabToSampleTab(Resource):
         target_tmp_dir = _create_temp_dir()
         try:
             if tmp_dir is None:
-                raise IOError("Could not create temporary directory " + tmp_dir)
+                raise IOError("Could not create temporary directory.")
             if not request.mimetype == "application/zip":
                 raise TypeError("Incorrect media type received. Got " + request.mimetype +
                                 ", expected application/zip")
@@ -756,7 +760,7 @@ class ConvertIsaTabToSampleTab(Resource):
                 # Write request data to file
                 file_path = _write_request_data(request, tmp_dir, 'in.zip')
                 if file_path is None:
-                    raise IOError("Could not create temporary file " + file_path)
+                    raise IOError("Could not create temporary file.")
                 with zipfile.ZipFile(file_path, 'r') as z:
                     # extract ISArchive files
                     z.extractall(tmp_dir)
