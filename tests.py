@@ -2,7 +2,7 @@ import json
 import unittest
 import os
 from isarest import app
-
+from api.create import validate_design_config
 
 class BaseConverterTestCase(unittest.TestCase):
     """Base test case for testing the converters"""
@@ -197,10 +197,14 @@ class ISAStudyDesignTest(unittest.TestCase):
         self.app = app.test_client()
         with open(os.path.abspath(
             os.path.join(
-                os.path.dirname(__file__), 'testdata', 'study-design-config', 'design-correct-two-arms.json'
+                os.path.dirname(__file__), 'testdata', 'study-design-config', 'study-design-3-repeated-treatments.json'
             )
         )) as fp:
             self.design_config = json.load(fp)
+
+    def test_validate_design_config(self):
+        res = validate_design_config(self.design_config)
+        self.assertIsNone(res)
 
     def test_send_isa_json(self):
         req_data = dict(responseFormat='json', studyDesignConfig=self.design_config)

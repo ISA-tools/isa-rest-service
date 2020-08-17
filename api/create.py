@@ -11,6 +11,7 @@ from isatools.model import Investigation
 from isatools.create.connectors import generate_study_design_from_config
 from isatools import isatab
 from isatools.isajson import ISAJSONEncoder
+from functools import reduce
 
 UNSUPPORTED_MIME_TYPE_ERROR = """
 Unsupported mime type: {}. Only JSON accepted. See documentation for the correct JSON format you must provide.
@@ -25,6 +26,54 @@ OUTPUT_JSON_FILE_NAME = 'investigation.json'
 
 CONTENT_TYPE_APPLICATION_ZIP = 'application/zip'
 CONTENT_TYPE_APPLICATION_JSON = 'application/json'
+
+MAX_SUBJECT_SIZE = 1000
+MAX_ARMS  = 20
+MAX_SAMPLE_SIZE = 10000
+MAX_ASSAY_COMBINATIONS = 32
+
+
+def validate_design_config(config):
+    """
+    This function perform a crude sanity check on the parameters supplied in a study design config
+    If the validation passes it returns None
+    If it fails it returns a tuple or dictionary with a list of validation errors
+    """
+    res = {}
+    arms = config['selectedArms']
+    sample_plan = config['samplePlan']
+    assay_plan = [
+        assay_config for assay_config in config['assayConfigs'] if config['selectedAssayTypes'][assay_config['name']]
+    ]
+    if len(arms) > MAX_ARMS:
+        res['arms'] = 'too many study arms. Current limit is {}, user provided {}'.format(MAX_ARMS, len(arms))
+    if any(arm['size'] > MAX_SUBJECT_SIZE for arm in arms):
+        res['size'] = 'at least one group size exceeds the limit of {} subjects'.format(MAX_SUBJECT_SIZE)
+    max_subj_size = max(arm['size'] for arm in arms)
+    if any(
+            size*max_subj_size > MAX_SAMPLE_SIZE for sample_type in sample_plan
+            for arm_name, sizes in sample_type['sampleTypeSizes'].items()
+            for size in sizes if size is not None
+    ):
+        res['sampleSize'] = 'at least one sample plan exceeds the limit of maximum sample size'
+    assay_messages = {}
+    for assay_type in assay_plan:
+        assay_combinations = 0
+        for node in assay_type['workflow']:
+            if '#replicates' in node:
+                combinations = reduce(
+                    lambda param, val: len(param["values"])*val,
+                    [val for key, val in node.items() if key != '#replicates'],
+                    1
+                )
+                assay_combinations = max(assay_combinations, combinations)
+        if assay_combinations > MAX_ASSAY_COMBINATIONS:
+            assay_messages[assay_type['name']] = 'assay exceeds maximum type of {} allowed combinations: {}'.format(
+                MAX_ASSAY_COMBINATIONS, assay_combinations
+            )
+    if assay_messages:
+        res['assayPlan'] = assay_messages
+    return res if res else None
 
 
 class ISAStudyDesign(Resource):
