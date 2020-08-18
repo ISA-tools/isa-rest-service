@@ -4,6 +4,7 @@ import os
 from isarest import app
 from api.create import validate_design_config
 
+
 class BaseConverterTestCase(unittest.TestCase):
     """Base test case for testing the converters"""
     def setUp(self):

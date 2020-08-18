@@ -13,6 +13,8 @@ from isatools import isatab
 from isatools.isajson import ISAJSONEncoder
 from functools import reduce
 
+from api.validation import MAX_SUBJECT_SIZE, MAX_ARMS, MAX_SAMPLE_SIZE, MAX_ASSAY_COMBINATIONS
+
 UNSUPPORTED_MIME_TYPE_ERROR = """
 Unsupported mime type: {}. Only JSON accepted. See documentation for the correct JSON format you must provide.
 """
@@ -26,11 +28,6 @@ OUTPUT_JSON_FILE_NAME = 'investigation.json'
 
 CONTENT_TYPE_APPLICATION_ZIP = 'application/zip'
 CONTENT_TYPE_APPLICATION_JSON = 'application/json'
-
-MAX_SUBJECT_SIZE = 1000
-MAX_ARMS  = 20
-MAX_SAMPLE_SIZE = 10000
-MAX_ASSAY_COMBINATIONS = 32
 
 
 def validate_design_config(config):
@@ -51,7 +48,7 @@ def validate_design_config(config):
         res['size'] = 'at least one group size exceeds the limit of {} subjects'.format(MAX_SUBJECT_SIZE)
     max_subj_size = max(arm['size'] for arm in arms)
     if any(
-            size*max_subj_size > MAX_SAMPLE_SIZE for sample_type in sample_plan
+            size * max_subj_size > MAX_SAMPLE_SIZE for sample_type in sample_plan
             for arm_name, sizes in sample_type['sampleTypeSizes'].items()
             for size in sizes if size is not None
     ):
@@ -125,6 +122,13 @@ class ISAStudyDesign(Resource):
             design_config = request.json['studyDesignConfig']
             res_format = request.json.get('responseFormat', 'tab')
             # TODO check if the studyDesignConfig is valid otherwise raise an error.
+            validation_errors = validate_design_config(design_config)
+            if validation_errors:
+                return Flask.response_class(
+                    status=400,
+                    response=validation_errors,
+                    mimetype=CONTENT_TYPE_APPLICATION_JSON
+                )
             study_design = generate_study_design_from_config(design_config)
             investigation = Investigation(studies=[study_design.generate_isa_study()])
             if res_format == 'json':

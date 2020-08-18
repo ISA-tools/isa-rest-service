@@ -16,6 +16,11 @@ if ENV == 'dev':
     PORT = 5000
     APP_BASE_LINK = 'http://localhost:' + str(PORT)
     DEBUG = True
+if ENV == 'test':
+    PORT = 5000
+    APP_BASE_LINK = 'http://localhost:' + str(PORT)
+    DEBUG = False
 else:
-    APP_BASE_LINK = 'https://something.ox.ac.uk'
+    PORT = 5000
+    APP_BASE_LINK = 'http://localhost:' + str(PORT)
     DEBUG = False
