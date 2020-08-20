@@ -869,7 +869,7 @@ api.add_resource(ConvertSampleTabToJson, '/api/v1/convert/sampletab-to-json')
 api.add_resource(ConvertJsonToSampleTab, '/api/v1/convert/json-to-sampletab')
 api.add_resource(ConvertIsaTabToSampleTab, '/api/v1/convert/isatab-to-sampletab')
 api.add_resource(ConvertMageTabToJson, '/api/v1/convert/magetab-to-json')
-api.add_resource(ISAStudyDesign, '/api/v1/isa-study-design')
+api.add_resource(ISAStudyDesign, '/api/v1/isa-study-from-design')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
