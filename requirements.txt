@@ -1,6 +1,6 @@
 wheel~=0.34.2
 -e git+https://github.com/rantav/flask-restful-swagger#egg=flask_restful_swagger
--e git+http://github.com/ISA-tools/isa-api@4e38b09abac60c6acb787169e6eaeac0ac35c1ae#egg=isatools
+-e git+http://github.com/ISA-tools/isa-api@e57c6b79aa536eef02b8b3e2641119ecfe04e4e3#egg=isatools
 #isatools==0.9.5
 Flask~=1.1.2
 requests~=2.23.0

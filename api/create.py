@@ -3,6 +3,7 @@ from zipfile import ZipFile
 import json
 import os
 from tempfile import TemporaryDirectory
+import traceback
 
 from flask import request, Flask, jsonify, send_file
 from flask_restful import Resource
@@ -121,6 +122,15 @@ class ISAStudyDesign(Resource):
         try:
             design_config = request.json['studyDesignConfig']
             res_format = request.json.get('responseFormat', 'tab')
+        except KeyError as ke:
+            resp = jsonify(
+                status=400,
+                message=MISSING_PARAM_ERROR.format(ke.args[0]),
+                error=ke
+            )
+            resp.status_code = 400
+            return resp
+        try:
             # TODO check if the studyDesignConfig is valid otherwise raise an error.
             validation_errors = validate_design_config(design_config)
             if validation_errors:
@@ -152,12 +162,19 @@ class ISAStudyDesign(Resource):
                         zip_file.write(os.path.join(temp_dir, file), file)
                 res_payload.seek(0)
                 return send_file(res_payload, mimetype=CONTENT_TYPE_APPLICATION_ZIP)
-        except KeyError as ke:
+        except Exception as e:
+            print('Exception caught: {}'.format(e))
+            print('Trace is: {}'.format(traceback.format_exc()))
             resp = jsonify(
-                status=400,
-                message=MISSING_PARAM_ERROR.format(ke.args[0])
+                status=500,
+                message='some nasty error occurred',
+                error={
+                    'type': e.__class__.__name__,
+                    'message': [str(x) for x in e.args],
+                    'trace': traceback.format_exc()
+                }
             )
-            resp.status_code = 400
+            resp.status_code = 500
             return resp
 
 
