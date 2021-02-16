@@ -107,6 +107,10 @@ class ISAStudyDesign(Resource):
             },
             {
                 "code": 415,
+                "message": MISSING_PARAM_ERROR.format('studyDesignConfig')
+            },
+            {
+                "code": 415,
                 "message": UNSUPPORTED_MIME_TYPE_ERROR.format('text/html')
             }
         ]
