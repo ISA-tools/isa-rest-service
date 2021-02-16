@@ -198,7 +198,10 @@ class ISAStudyDesignTest(unittest.TestCase):
         self.app = app.test_client()
         with open(os.path.abspath(
             os.path.join(
-                os.path.dirname(__file__), 'testdata', 'study-design-config', 'study-design-3-repeated-treatments.json'
+                os.path.dirname(__file__),
+                'testdata',
+                'study-design-config',
+                'crossover-study-design-4-arms-blood-derma-nmr-ms.json'
             )
         )) as fp:
             self.design_config = json.load(fp)

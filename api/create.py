@@ -9,7 +9,7 @@ from flask import request, Flask, jsonify, send_file
 from flask_restful import Resource
 from flask_restful_swagger import swagger
 from isatools.model import Investigation
-from isatools.create.connectors import generate_study_design_from_config
+from isatools.create.connectors import generate_study_design
 from isatools import isatab
 from isatools.isajson import ISAJSONEncoder
 from functools import reduce
@@ -38,11 +38,9 @@ def validate_design_config(config):
     If it fails it returns a tuple or dictionary with a list of validation errors
     """
     res = {}
-    arms = config['selectedArms']
+    arms = config['arms']['selected']
     sample_plan = config['samplePlan']
-    assay_plan = [
-        assay_config for assay_config in config['assayConfigs'] if config['selectedAssayTypes'][assay_config['name']]
-    ]
+    assay_plan = config['assayPlan']
     if len(arms) > MAX_ARMS:
         res['arms'] = 'too many study arms. Current limit is {}, user provided {}'.format(MAX_ARMS, len(arms))
     if any(arm['size'] > MAX_SUBJECT_SIZE for arm in arms):
@@ -143,7 +141,7 @@ class ISAStudyDesign(Resource):
                     response=validation_errors,
                     mimetype=CONTENT_TYPE_APPLICATION_JSON
                 )
-            study_design = generate_study_design_from_config(design_config)
+            study_design = generate_study_design(design_config)
             investigation = Investigation(studies=[study_design.generate_isa_study()])
             if res_format == 'json':
                 return Flask.response_class(
