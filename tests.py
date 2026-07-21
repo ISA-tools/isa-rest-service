@@ -1,17 +1,24 @@
+import json
 import unittest
 import os
 from isarest import app
+from api.create import validate_design_config
 
 
 class BaseConverterTestCase(unittest.TestCase):
     """Base test case for testing the converters"""
     def setUp(self):
         self.app = app.test_client()
-        self.test_data_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.zip'), 'rb').read()
-        self.test_data_json = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.json'), 'rb').read()
-        self.test_data_json_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3_json.zip'), 'rb').read()
-        self.test_sampletab = open(os.path.join(os.path.dirname(__file__), 'testdata/GSB-3.txt'), 'rb').read()
-        self.test_magetab_zip = open(os.path.join(os.path.dirname(__file__), 'testdata/E-MEXP-31.zip'), 'rb').read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.zip'), 'rb') as fp:
+            self.test_data_zip = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3.json'), 'rb') as fp:
+            self.test_data_json = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/BII-S-3_json.zip'), 'rb') as fp:
+            self.test_data_json_zip = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/GSB-3.txt'), 'rb') as fp:
+            self.test_sampletab = fp.read()
+        with open(os.path.join(os.path.dirname(__file__), 'testdata/E-MEXP-31.zip'), 'rb') as fp:
+            self.test_magetab_zip = fp.read()
 
     def tearDown(self):
         pass
@@ -183,6 +190,50 @@ class MageTabTests(BaseConverterTestCase):
     #                              headers={'Content-Type': 'application/json'})
     #     self.assertEqual(response.status_code, 200)
     #     self.assertEqual(response.mimetype, 'application/zip')
+
+
+class ISAStudyDesignTest(unittest.TestCase):
+
+    def setUp(self):
+        self.app = app.test_client()
+        with open(os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                'testdata',
+                'study-design-config',
+                'crossover-study-design-4-arms-blood-derma-nmr-ms.json'
+            )
+        )) as fp:
+            self.design_config = json.load(fp)
+
+    def test_validate_design_config(self):
+        res = validate_design_config(self.design_config)
+        self.assertIsNone(res)
+
+    def test_send_isa_json(self):
+        req_data = dict(responseFormat='json', studyDesignConfig=self.design_config)
+        response = self.app.post(
+            path='/api/v1/isa-study-from-design',
+            json=req_data
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/json')
+
+    def test_send_isa_tab(self):
+        response = self.app.post(
+            path='/api/v1/isa-study-from-design',
+            json=dict(responseFormat='tab', studyDesignConfig=self.design_config)
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
+
+    def test_send_isa_json_and_tab(self):
+        response = self.app.post(
+            path='/api/v1/isa-study-from-design',
+            json=dict(responseFormat='all', studyDesignConfig=self.design_config)
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/zip')
 
 
 if __name__ == '__main__':

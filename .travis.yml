@@ -1,12 +1,13 @@
 language: python
 python:
-- '3.4'
-- '3.5'
+- '3.7'
+- '3.8'
+- '3.9'
 install:
 - pip install -r requirements.txt
 - pip install coveralls
-- pip install nose
 script:
-- nosetests --with-coverage
+- coverage run -m unittest tests
+- coverage report -m
 after_success:
 - coveralls

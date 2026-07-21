@@ -4,9 +4,10 @@ import shutil
 import json
 import io
 import zipfile
-from flask import Flask, Response, request, jsonify, send_file
+from flask import Flask, Response, request, jsonify, send_file, make_response
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
+from flask_cors import CORS
 import config
 
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, sampletab2isatab, sampletab2json, \
@@ -14,6 +15,8 @@ from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, sam
 from isatools.net import mw2isa
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
+
+from api.create import ISAStudyDesign
 
 
 def _allowed_file(filename):
@@ -46,9 +49,8 @@ def _write_request_data(request_, tmp_dir, file_name):
 
 
 def _file_to_response(response, file_path, mimetype):
-    fd = open(file_path, 'rb')
-    response.set_data(fd.read())
-    fd.close()
+    with open(file_path, 'rb') as fd:
+        response.set_data(fd.read())
     response.headers.add('content-length', str(len(response.get_data())))
     response.mimetype = mimetype
     return response
@@ -158,7 +160,8 @@ class ConvertJsonToTab(Resource):
                 file_path = _write_request_data(request, tmp_dir, tmp_file)
                 if file_path is None:
                     return Response(500)
-                json2isatab.convert(open(file_path), tmp_dir)
+                with open(file_path) as fd:
+                    json2isatab.convert(fd, tmp_dir)
                 os.remove(file_path)
                 memf = io.BytesIO()
                 with zipfile.ZipFile(memf, 'w') as zf:
@@ -575,7 +578,8 @@ class ConvertSampleTabToIsaTab(Resource):
             file_path = _write_request_data(request, tmp_dir, tmp_file)
             if file_path is None:
                 raise IOError("Could not create temporary file " + file_path)
-            sampletab2isatab.convert(open(file_path), target_tmp_dir)
+            with open(file_path) as fd:
+                sampletab2isatab.convert(fd, target_tmp_dir)
             memf = io.BytesIO()
             with zipfile.ZipFile(memf, 'w') as zf:
                 for file in os.listdir(target_tmp_dir):
@@ -697,7 +701,10 @@ class ConvertJsonToSampleTab(Resource):
                     with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_fp:
                         json2sampletab.convert(json_fp, st_fp)
                 with open(os.path.join(tmp_dir, 'out.txt'), 'r') as st_fp:
-                    response = send_file(st_fp, mimetype='text/tab-separated-values')
+                    payload = st_fp.read()
+                    response = Response(
+                        payload, mimetype='text/tab-separated-values'
+                    )
         except TypeError as t:
             print("TypeError: {}".format(t))
             response = Response(status=415)
@@ -745,7 +752,7 @@ class ConvertIsaTabToSampleTab(Resource):
         target_tmp_dir = _create_temp_dir()
         try:
             if tmp_dir is None:
-                raise IOError("Could not create temporary directory " + tmp_dir)
+                raise IOError("Could not create temporary directory.")
             if not request.mimetype == "application/zip":
                 raise TypeError("Incorrect media type received. Got " + request.mimetype +
                                 ", expected application/zip")
@@ -753,7 +760,7 @@ class ConvertIsaTabToSampleTab(Resource):
                 # Write request data to file
                 file_path = _write_request_data(request, tmp_dir, 'in.zip')
                 if file_path is None:
-                    raise IOError("Could not create temporary file " + file_path)
+                    raise IOError("Could not create temporary file.")
                 with zipfile.ZipFile(file_path, 'r') as z:
                     # extract ISArchive files
                     z.extractall(tmp_dir)
@@ -846,6 +853,7 @@ class ConvertMageTabToJson(Resource):
 
 app = Flask(__name__)
 app.config.from_object(config)
+cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 api = swagger.docs(Api(app), apiVersion='0.8')
 api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
@@ -861,6 +869,7 @@ api.add_resource(ConvertSampleTabToJson, '/api/v1/convert/sampletab-to-json')
 api.add_resource(ConvertJsonToSampleTab, '/api/v1/convert/json-to-sampletab')
 api.add_resource(ConvertIsaTabToSampleTab, '/api/v1/convert/isatab-to-sampletab')
 api.add_resource(ConvertMageTabToJson, '/api/v1/convert/magetab-to-json')
+api.add_resource(ISAStudyDesign, '/api/v1/isa-study-from-design')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)
