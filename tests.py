@@ -8,11 +8,12 @@ import stat
 import tempfile
 import unittest
 import zipfile
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from unittest.mock import ANY, Mock, patch
 
 import config as service_config
 import isarest as service
+import api.create as create_api
 from flask import Flask
 from api.archive import InvalidArchive, extract_validated_zip
 from api.create import _error_response, validate_design_config
@@ -1105,6 +1106,217 @@ class IsaRestHandlerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {'investigation': 1})
         convert.assert_called_once()
+
+
+class StudyDesignEndpointTests(unittest.TestCase):
+
+    PATH = '/api/v1/isa-study-from-design'
+    DESIGN = {'design': 'minimal'}
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def assert_error(self, response, status, message, details=ANY):
+        self.assertEqual(response.status_code, status)
+        payload = response.get_json()
+        self.assertEqual(payload['status'], status)
+        self.assertEqual(payload['error']['message'], message)
+        if details is ANY:
+            self.assertNotIn('details', payload['error'])
+        else:
+            self.assertEqual(payload['error']['details'], details)
+
+    @staticmethod
+    def write_tab(_investigation, output_path):
+        with open(os.path.join(output_path, 'i_generated.txt'), 'w') as output:
+            output.write('Investigation Identifier\tgenerated\n')
+
+    def test_rejects_non_json_malformed_and_non_object_requests(self):
+        response = self.client.post(
+            self.PATH, data=b'plain text', content_type='text/plain'
+        )
+        self.assert_error(
+            response,
+            415,
+            create_api.UNSUPPORTED_MIME_TYPE_ERROR.format('text/plain').strip()
+        )
+
+        response = self.client.post(
+            self.PATH, data=b'{', content_type='application/json'
+        )
+        self.assert_error(
+            response, 400, 'Request body must contain a JSON object'
+        )
+
+        response = self.client.post(self.PATH, json=['not', 'an', 'object'])
+        self.assert_error(
+            response, 400, 'Request body must contain a JSON object'
+        )
+
+    def test_missing_design_and_unsupported_response_format(self):
+        response = self.client.post(
+            self.PATH, json={'responseFormat': 'json'}
+        )
+        self.assert_error(
+            response,
+            400,
+            create_api.MISSING_PARAM_ERROR.format('studyDesignConfig').strip(),
+            "'studyDesignConfig'"
+        )
+
+        response = self.client.post(
+            self.PATH,
+            json={'studyDesignConfig': self.DESIGN, 'responseFormat': 'yaml'}
+        )
+        self.assert_error(
+            response, 400, 'Unsupported responseFormat', 'yaml'
+        )
+
+    def test_validation_error_has_structured_details(self):
+        validation_errors = {
+            'arms': 'too many arms',
+            'assayPlan': {'sequencing': 'too many combinations'}
+        }
+        with patch(
+            'api.create.validate_design_config', return_value=validation_errors
+        ) as validate:
+            response = self.client.post(
+                self.PATH,
+                json={
+                    'studyDesignConfig': self.DESIGN,
+                    'responseFormat': 'json'
+                }
+            )
+
+        self.assert_error(
+            response,
+            400,
+            'Invalid study design configuration',
+            validation_errors
+        )
+        validate.assert_called_once_with(self.DESIGN)
+
+    def test_successful_json_tab_and_all_responses(self):
+        for response_format in ('json', 'tab', 'all'):
+            with self.subTest(response_format=response_format):
+                generated_study = Mock()
+                generated_study.generate_isa_study.return_value = 'isa-study'
+                investigation = {'studies': ['isa-study']}
+                with patch(
+                    'api.create.validate_design_config', return_value=None
+                ) as validate, patch(
+                    'api.create.generate_study_design',
+                    return_value=generated_study
+                ) as generate, patch(
+                    'api.create.Investigation', return_value=investigation
+                ) as investigation_class, patch(
+                    'api.create.isatab.dump', side_effect=self.write_tab
+                ) as dump:
+                    response = self.client.post(
+                        self.PATH,
+                        json={
+                            'studyDesignConfig': self.DESIGN,
+                            'responseFormat': response_format
+                        }
+                    )
+
+                self.assertEqual(response.status_code, 200)
+                validate.assert_called_once_with(self.DESIGN)
+                generate.assert_called_once_with(self.DESIGN)
+                generated_study.generate_isa_study.assert_called_once_with()
+                investigation_class.assert_called_once_with(studies=['isa-study'])
+
+                if response_format == 'json':
+                    self.assertEqual(response.mimetype, 'application/json')
+                    self.assertEqual(response.get_json(), investigation)
+                    dump.assert_not_called()
+                    continue
+
+                self.assertEqual(response.mimetype, 'application/zip')
+                with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+                    names = set(archive.namelist())
+                    self.assertEqual(
+                        archive.read('i_generated.txt'),
+                        b'Investigation Identifier\tgenerated\n'
+                    )
+                    if response_format == 'tab':
+                        self.assertEqual(names, {'i_generated.txt'})
+                    else:
+                        self.assertEqual(
+                            names, {'i_generated.txt', 'investigation.json'}
+                        )
+                        self.assertEqual(
+                            json.loads(archive.read('investigation.json')),
+                            investigation
+                        )
+                dump.assert_called_once_with(
+                    investigation, output_path=ANY
+                )
+
+    def test_generation_stage_failures_return_generic_500_and_log(self):
+        cases = (
+            ('study generation', 'json'),
+            ('ISA generation', 'json'),
+            ('JSON serialization', 'json'),
+            ('ISA-Tab serialization', 'tab'),
+            ('ZIP creation', 'tab'),
+        )
+        for stage, response_format in cases:
+            with self.subTest(stage=stage):
+                generated_study = Mock()
+                generated_study.generate_isa_study.return_value = 'isa-study'
+                with ExitStack() as stack:
+                    stack.enter_context(patch(
+                        'api.create.validate_design_config', return_value=None
+                    ))
+                    generate = stack.enter_context(patch(
+                        'api.create.generate_study_design',
+                        return_value=generated_study
+                    ))
+                    stack.enter_context(patch(
+                        'api.create.Investigation',
+                        return_value={'studies': ['isa-study']}
+                    ))
+                    dump = stack.enter_context(patch(
+                        'api.create.isatab.dump', side_effect=self.write_tab
+                    ))
+                    log_exception = stack.enter_context(
+                        patch.object(app.logger, 'exception')
+                    )
+
+                    if stage == 'study generation':
+                        generate.side_effect = RuntimeError('generation failed')
+                    elif stage == 'ISA generation':
+                        generated_study.generate_isa_study.side_effect = RuntimeError(
+                            'ISA generation failed'
+                        )
+                    elif stage == 'JSON serialization':
+                        stack.enter_context(patch(
+                            'api.create.ISAJSONEncoder',
+                            side_effect=RuntimeError('JSON failed')
+                        ))
+                    elif stage == 'ISA-Tab serialization':
+                        dump.side_effect = RuntimeError('ISA-Tab failed')
+                    else:
+                        stack.enter_context(patch(
+                            'api.create.ZipFile',
+                            side_effect=RuntimeError('ZIP failed')
+                        ))
+
+                    response = self.client.post(
+                        self.PATH,
+                        json={
+                            'studyDesignConfig': self.DESIGN,
+                            'responseFormat': response_format
+                        }
+                    )
+
+                self.assert_error(
+                    response, 500, 'Study design generation failed'
+                )
+                log_exception.assert_called_once_with(
+                    'Could not generate a study from the supplied design'
+                )
 
 
 class BaseConverterTestCase(unittest.TestCase):
