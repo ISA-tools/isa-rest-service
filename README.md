@@ -7,7 +7,7 @@ Built around the ‘Investigation’ (the project context), ‘Study’ (a unit 
 
 The ISA REST service is a restful web service to interact with the [ISA API](https://github.com/ISA-tools/isa-api). This service needs to import the `isatools` package [published on PyPI](https://pypi.python.org/pypi/isatools/). **We strongly suggest you check out the [ISA API](https://github.com/ISA-tools/isa-api) project first before trying out this REST service.**
 
-[![Build Status](https://travis-ci.org/ISA-tools/isa-rest-service.svg?branch=master)](https://travis-ci.org/ISA-tools/isa-rest-service) [![Coverage Status](https://coveralls.io/repos/github/ISA-tools/isa-rest-service/badge.svg?branch=master)](https://coveralls.io/github/ISA-tools/isa-rest-service?branch=master)
+[![Tests](https://github.com/ISA-tools/isa-rest-service/actions/workflows/tests.yml/badge.svg)](https://github.com/ISA-tools/isa-rest-service/actions/workflows/tests.yml) [![Coverage Status](https://coveralls.io/repos/github/ISA-tools/isa-rest-service/badge.svg?branch=master)](https://coveralls.io/github/ISA-tools/isa-rest-service?branch=master)
 
 To find out more about ISA, see [www.isa-tools.org](http://www.isa-tools.org)
 
@@ -30,6 +30,20 @@ To find out who's using ISA and about the ISA development and user community, se
 Using the ISA REST service
 --------------------------
 To install and start using the ISA REST service, check out the [wiki](https://github.com/ISA-tools/isa-rest-service/wiki) that has information on how to install and run the service, and what REST calls you can make.
+
+Testing and coverage
+--------------------
+Install the development dependencies into a Python 3.9 virtual environment:
+
+    python -m pip install -r requirements-dev.txt
+
+Run the test suite with branch coverage enabled:
+
+    python -m coverage run -m unittest tests
+    python -m coverage report -m
+
+An HTML report can be generated with `python -m coverage html` and opened from
+`htmlcov/index.html`.
 
 Contributing
 ------------

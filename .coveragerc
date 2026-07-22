@@ -1,0 +1,20 @@
+[run]
+branch = True
+relative_files = True
+source = .
+omit =
+    tests.py
+    src/*
+    .venv/*
+    .venv39/*
+    */site-packages/*
+
+[report]
+show_missing = True
+skip_empty = True
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml

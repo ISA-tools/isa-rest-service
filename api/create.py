@@ -3,11 +3,11 @@ from zipfile import ZipFile
 import json
 import os
 from tempfile import TemporaryDirectory
-import traceback
 
-from flask import request, Flask, jsonify, send_file
+from flask import current_app, request, jsonify, send_file
 from flask_restful import Resource
 from flask_restful_swagger import swagger
+from werkzeug.exceptions import BadRequest
 from isatools.model import Investigation
 from isatools.create.connectors import generate_study_design
 from isatools import isatab
@@ -29,6 +29,16 @@ OUTPUT_JSON_FILE_NAME = 'investigation.json'
 
 CONTENT_TYPE_APPLICATION_ZIP = 'application/zip'
 CONTENT_TYPE_APPLICATION_JSON = 'application/json'
+SUPPORTED_RESPONSE_FORMATS = {'json', 'tab', 'all'}
+
+
+def _error_response(status, message, details=None):
+    error = {'message': message}
+    if details is not None:
+        error['details'] = details
+    response = jsonify(status=status, error=error)
+    response.status_code = status
+    return response
 
 
 def validate_design_config(config):
@@ -115,36 +125,30 @@ class ISAStudyDesign(Resource):
     )
     def post(self):
         if not request.is_json:
-            resp = jsonify(dict(
-                status=415,
-                message=UNSUPPORTED_MIME_TYPE_ERROR.format(request.mimetype)
-            ))
-            resp.status_code = 415
-            return resp
+            return _error_response(415, UNSUPPORTED_MIME_TYPE_ERROR.format(request.mimetype).strip())
         try:
-            design_config = request.json['studyDesignConfig']
-            res_format = request.json.get('responseFormat', 'tab')
+            payload = request.get_json()
+            design_config = payload['studyDesignConfig']
+            res_format = payload.get('responseFormat', 'tab')
         except KeyError as ke:
-            resp = jsonify(
-                status=400,
-                message=MISSING_PARAM_ERROR.format(ke.args[0]),
-                error=ke
+            return _error_response(
+                400,
+                MISSING_PARAM_ERROR.format(ke.args[0]).strip(),
+                str(ke)
             )
-            resp.status_code = 400
-            return resp
+        except (BadRequest, TypeError):
+            return _error_response(400, 'Request body must contain a JSON object')
+        if res_format not in SUPPORTED_RESPONSE_FORMATS:
+            return _error_response(400, 'Unsupported responseFormat', res_format)
         try:
             # TODO check if the studyDesignConfig is valid otherwise raise an error.
             validation_errors = validate_design_config(design_config)
             if validation_errors:
-                return Flask.response_class(
-                    status=400,
-                    response=validation_errors,
-                    mimetype=CONTENT_TYPE_APPLICATION_JSON
-                )
+                return _error_response(400, 'Invalid study design configuration', validation_errors)
             study_design = generate_study_design(design_config)
             investigation = Investigation(studies=[study_design.generate_isa_study()])
             if res_format == 'json':
-                return Flask.response_class(
+                return current_app.response_class(
                     status=200,
                     response=json.dumps(investigation, cls=ISAJSONEncoder),
                     mimetype=CONTENT_TYPE_APPLICATION_JSON
@@ -164,19 +168,6 @@ class ISAStudyDesign(Resource):
                         zip_file.write(os.path.join(temp_dir, file), file)
                 res_payload.seek(0)
                 return send_file(res_payload, mimetype=CONTENT_TYPE_APPLICATION_ZIP)
-        except Exception as e:
-            print('Exception caught: {}'.format(e))
-            print('Trace is: {}'.format(traceback.format_exc()))
-            resp = jsonify(
-                status=500,
-                message='some nasty error occurred',
-                error={
-                    'type': e.__class__.__name__,
-                    'message': [str(x) for x in e.args],
-                    'trace': traceback.format_exc()
-                }
-            )
-            resp.status_code = 500
-            return resp
-
-
+        except Exception:
+            current_app.logger.exception('Could not generate a study from the supplied design')
+            return _error_response(500, 'Study design generation failed')
