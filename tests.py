@@ -3,6 +3,7 @@ import importlib
 import io
 import json
 import os
+import runpy
 import stat
 import tempfile
 import unittest
@@ -11,6 +12,8 @@ from contextlib import redirect_stdout
 from unittest.mock import ANY, Mock, patch
 
 import config as service_config
+import isarest as service
+from flask import Flask
 from api.archive import InvalidArchive, extract_validated_zip
 from api.create import _error_response, validate_design_config
 from api.validation import (
@@ -21,6 +24,7 @@ from api.validation import (
 )
 from isarest import app
 from isarest_client import IsaRestClient
+from werkzeug.exceptions import RequestEntityTooLarge
 
 
 class MemberListArchive:
@@ -596,6 +600,511 @@ class IsaRestClientTests(unittest.TestCase):
             'convert_json_to_sampletab', '/api/v1/convert/json-to-sampletab',
             'application/json', 'out.txt'
         )
+
+
+class IsaRestHelperTests(unittest.TestCase):
+
+    @staticmethod
+    def zip_payload(files):
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, 'w') as archive:
+            for name, content in files.items():
+                archive.writestr(name, content)
+        return payload.getvalue()
+
+    def test_temporary_directory_existing_and_missing_upload_folder(self):
+        with tempfile.TemporaryDirectory() as upload_folder:
+            with patch.object(service.config, 'UPLOAD_FOLDER', upload_folder):
+                with service._temporary_directory() as temporary:
+                    self.assertEqual(os.path.dirname(temporary), upload_folder)
+                    self.assertTrue(os.path.isdir(temporary))
+
+        with tempfile.TemporaryDirectory() as parent:
+            missing = os.path.join(parent, 'missing-upload-folder')
+            with patch.object(service.config, 'UPLOAD_FOLDER', missing):
+                with self.assertRaisesRegex(IOError, 'UPLOAD_FOLDER does not exist'):
+                    service._temporary_directory()
+
+    def test_zip_directory_empty_flat_and_nested(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with zipfile.ZipFile(service._zip_directory(directory)) as archive:
+                self.assertEqual(archive.namelist(), [])
+
+            with open(os.path.join(directory, 'flat.txt'), 'wb') as output:
+                output.write(b'flat')
+            nested = os.path.join(directory, 'nested')
+            os.mkdir(nested)
+            with open(os.path.join(nested, 'deep.txt'), 'wb') as output:
+                output.write(b'deep')
+
+            with zipfile.ZipFile(service._zip_directory(directory)) as archive:
+                self.assertEqual(
+                    sorted(archive.namelist()), ['flat.txt', 'nested/deep.txt']
+                )
+                self.assertEqual(archive.read('flat.txt'), b'flat')
+                self.assertEqual(archive.read('nested/deep.txt'), b'deep')
+
+    def test_write_request_data_preserves_exact_bytes(self):
+        request = Mock()
+        request.get_data.return_value = b'payload\x00\xff'
+        with tempfile.TemporaryDirectory() as directory:
+            path = service._write_request_data(request, directory, 'input.bin')
+            with open(path, 'rb') as input_file:
+                self.assertEqual(input_file.read(), b'payload\x00\xff')
+        request.get_data.assert_called_once_with()
+
+    def test_extract_archive_valid_and_invalid_zip_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = os.path.join(directory, 'valid.zip')
+            with open(archive_path, 'wb') as output:
+                output.write(self.zip_payload({'nested/file.txt': b'content'}))
+            destination = os.path.join(directory, 'output')
+            os.mkdir(destination)
+
+            extracted = service._extract_archive(
+                archive_path, destination, {'.txt'}
+            )
+            self.assertEqual(len(extracted), 1)
+            with open(extracted[0], 'rb') as input_file:
+                self.assertEqual(input_file.read(), b'content')
+
+            invalid_path = os.path.join(directory, 'invalid.zip')
+            with open(invalid_path, 'wb') as output:
+                output.write(b'not a zip')
+            with self.assertRaisesRegex(
+                    InvalidArchive, 'Request does not contain a valid ZIP archive'
+            ):
+                service._extract_archive(invalid_path, destination, {'.txt'})
+
+        with patch.object(
+                service.zipfile, 'ZipFile', side_effect=zipfile.LargeZipFile()
+        ):
+            with self.assertRaisesRegex(
+                    InvalidArchive, 'Request does not contain a valid ZIP archive'
+            ):
+                service._extract_archive('large.zip', '/tmp', {'.txt'})
+
+    def test_extract_request_archive_returns_directory_and_files(self):
+        request = Mock()
+        request.get_data.return_value = self.zip_payload({'i_study.txt': b'study'})
+        with tempfile.TemporaryDirectory() as directory:
+            extraction_dir, files = service._extract_request_archive(
+                request, directory, {'.txt'}
+            )
+            self.assertEqual(extraction_dir, os.path.join(directory, 'extracted'))
+            self.assertEqual(files, [os.path.join(extraction_dir, 'i_study.txt')])
+            with open(files[0], 'rb') as input_file:
+                self.assertEqual(input_file.read(), b'study')
+
+    def test_error_and_conversion_error_responses(self):
+        with app.app_context():
+            response = service._error_response(409, 'conflict')
+            with patch.object(app.logger, 'exception') as log_exception:
+                conversion = service._conversion_error('converter exploded')
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.get_json(),
+            {'status': 409, 'error': {'message': 'conflict'}}
+        )
+        self.assertEqual(conversion.status_code, 500)
+        self.assertEqual(
+            conversion.get_json(),
+            {'status': 500, 'error': {'message': 'Conversion failed'}}
+        )
+        log_exception.assert_called_once_with('converter exploded')
+
+    def test_request_too_large_handler_through_flask(self):
+        limited_app = Flask('request-size-test')
+        limited_app.register_error_handler(
+            RequestEntityTooLarge, service.handle_request_too_large
+        )
+
+        def oversized():
+            raise RequestEntityTooLarge()
+
+        limited_app.add_url_rule('/oversized', view_func=oversized)
+        response = limited_app.test_client().get('/oversized')
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(
+            response.get_json(),
+            {
+                'status': 413,
+                'error': {'message': 'Request exceeds the permitted size'}
+            }
+        )
+
+    def test_main_runs_flask_with_configured_values(self):
+        with patch('flask.app.Flask.run') as run:
+            runpy.run_module('isarest', run_name='__main__')
+        run.assert_called_once_with(
+            host='0.0.0.0', port=service.config.PORT, debug=service.config.DEBUG
+        )
+
+
+class IsaRestHandlerTests(unittest.TestCase):
+
+    ZIP_MIME = 'application/zip'
+    JSON_MIME = 'application/json'
+    SAMPLE_MIME = 'text/tab-separated-values'
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    @staticmethod
+    def zip_payload(files):
+        return IsaRestHelperTests.zip_payload(files)
+
+    def assert_error(self, response, status, message):
+        self.assertEqual(response.status_code, status)
+        self.assertEqual(
+            response.get_json(),
+            {'status': status, 'error': {'message': message}}
+        )
+
+    def assert_zip_response(self, response, expected_files):
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, self.ZIP_MIME)
+        with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+            self.assertEqual(
+                {name: archive.read(name) for name in archive.namelist()},
+                expected_files
+            )
+
+    def test_wrong_mime_type_error_envelopes(self):
+        cases = (
+            ('/api/v1/convert/tab-to-json', 'Expected application/zip'),
+            ('/api/v1/convert/json-to-tab', 'Expected application/json'),
+            ('/api/v1/convert/tab-to-sra', 'Expected application/zip'),
+            ('/api/v1/convert/json-to-sra', 'Expected application/zip'),
+            ('/api/v1/convert/tab-to-cedar', 'Expected application/zip'),
+            ('/api/v1/validate/json', 'Expected application/json'),
+            ('/api/v1/validate/isatab', 'Expected application/zip'),
+            ('/api/v1/convert/sampletab-to-isatab',
+             'Expected text/tab-separated-values'),
+            ('/api/v1/convert/sampletab-to-json',
+             'Expected text/tab-separated-values'),
+            ('/api/v1/convert/json-to-sampletab', 'Expected application/json'),
+            ('/api/v1/convert/isatab-to-sampletab', 'Expected application/zip'),
+            ('/api/v1/convert/magetab-to-json', 'Expected application/zip'),
+        )
+        for path, message in cases:
+            with self.subTest(path=path):
+                response = self.client.post(
+                    path, data=b'input', content_type='application/octet-stream'
+                )
+                self.assert_error(response, 415, message)
+
+    def test_invalid_archive_errors_for_every_zip_endpoint(self):
+        paths = (
+            '/api/v1/convert/tab-to-json',
+            '/api/v1/convert/tab-to-sra',
+            '/api/v1/convert/json-to-sra',
+            '/api/v1/convert/tab-to-cedar',
+            '/api/v1/validate/isatab',
+            '/api/v1/convert/isatab-to-sampletab',
+            '/api/v1/convert/magetab-to-json',
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                with patch(
+                    'isarest._extract_request_archive',
+                    side_effect=InvalidArchive('unsafe archive')
+                ):
+                    response = self.client.post(
+                        path, data=b'zip', content_type=self.ZIP_MIME
+                    )
+                self.assert_error(response, 400, 'unsafe archive')
+
+    def test_converter_failures_return_500_and_log(self):
+        isa_zip = self.zip_payload({'i_study.txt': b'study'})
+        json_zip = self.zip_payload({'study.json': b'{}'})
+        mage_zip = self.zip_payload({'study.idf.txt': b'idf'})
+        cases = (
+            ('post', '/api/v1/convert/tab-to-json', self.ZIP_MIME, isa_zip,
+             'isarest.isatab2json.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/json-to-tab', self.JSON_MIME, b'{}',
+             'isarest.json2isatab.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/tab-to-sra', self.ZIP_MIME, isa_zip,
+             'isarest.isatab2sra.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/json-to-sra', self.ZIP_MIME, json_zip,
+             'isarest.json2sra.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/tab-to-cedar', self.ZIP_MIME, isa_zip,
+             'isarest.ISATab2CEDAR', 'Conversion failed'),
+            ('post', '/api/v1/validate/json', self.JSON_MIME, b'{}',
+             'isarest.isajson.validate', 'Validation failed'),
+            ('post', '/api/v1/validate/isatab', self.ZIP_MIME, isa_zip,
+             'isarest.isatab.validate', 'Validation failed'),
+            ('get', '/api/v1/import/mw/ST000001', None, None,
+             'isarest.mw2isa.mw2isa_convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/sampletab-to-isatab', self.SAMPLE_MIME,
+             b'sample', 'isarest.sampletab2isatab.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/sampletab-to-json', self.SAMPLE_MIME,
+             b'sample', 'isarest.sampletab2json.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/json-to-sampletab', self.JSON_MIME, b'{}',
+             'isarest.json2sampletab.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/isatab-to-sampletab', self.ZIP_MIME,
+             isa_zip, 'isarest.isatab2sampletab.convert', 'Conversion failed'),
+            ('post', '/api/v1/convert/magetab-to-json', self.ZIP_MIME,
+             mage_zip, 'isarest.magetab2json.convert', 'Conversion failed'),
+        )
+        for method, path, content_type, data, target, message in cases:
+            with self.subTest(path=path):
+                with patch(target, side_effect=RuntimeError('converter failed')):
+                    with patch.object(app.logger, 'exception') as log_exception:
+                        if method == 'get':
+                            response = self.client.get(path)
+                        else:
+                            response = self.client.post(
+                                path, data=data, content_type=content_type
+                            )
+                self.assert_error(response, 500, message)
+                log_exception.assert_called_once()
+
+    def test_tab_to_json_success_and_none_result(self):
+        payload = self.zip_payload({'i_study.txt': b'study'})
+        with patch('isarest.isatab2json.convert', return_value={'study': 1}) as convert:
+            response = self.client.post(
+                '/api/v1/convert/tab-to-json', data=payload,
+                content_type=self.ZIP_MIME
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'study': 1})
+        convert.assert_called_once()
+
+        with patch('isarest.isatab2json.convert', return_value=None):
+            response = self.client.post(
+                '/api/v1/convert/tab-to-json', data=payload,
+                content_type=self.ZIP_MIME
+            )
+        self.assert_error(response, 500, 'Conversion failed')
+
+    def test_json_to_tab_successful_zip_contents(self):
+        def convert(input_file, output_directory):
+            self.assertEqual(json.load(input_file), {'study': 1})
+            with open(os.path.join(output_directory, 'i_generated.txt'), 'wb') as output:
+                output.write(b'generated tab')
+
+        with patch('isarest.json2isatab.convert', side_effect=convert):
+            response = self.client.post(
+                '/api/v1/convert/json-to-tab', data=b'{"study": 1}',
+                content_type=self.JSON_MIME
+            )
+        self.assert_zip_response(response, {'i_generated.txt': b'generated tab'})
+
+    def test_tab_to_sra_successful_zip_contents(self):
+        def convert(_source, output_directory, validate_first):
+            self.assertFalse(validate_first)
+            with open(os.path.join(output_directory, 'study.xml'), 'wb') as output:
+                output.write(b'<study/>')
+
+        with patch('isarest.isatab2sra.convert', side_effect=convert):
+            response = self.client.post(
+                '/api/v1/convert/tab-to-sra',
+                data=self.zip_payload({'i_study.txt': b'study'}),
+                content_type=self.ZIP_MIME
+            )
+        self.assert_zip_response(response, {'study.xml': b'<study/>'})
+
+    def test_json_to_sra_requires_one_json_and_returns_output_zip(self):
+        for files in (
+                {'data.csv': b'data'},
+                {'one.json': b'{}', 'two.json': b'{}'}
+        ):
+            with self.subTest(files=tuple(files)):
+                response = self.client.post(
+                    '/api/v1/convert/json-to-sra', data=self.zip_payload(files),
+                    content_type=self.ZIP_MIME
+                )
+                self.assert_error(
+                    response, 400, 'Archive must contain exactly one JSON file'
+                )
+
+        def convert(input_file, output_directory, validate_first):
+            self.assertEqual(json.load(input_file), {'study': 1})
+            self.assertFalse(validate_first)
+            with open(os.path.join(output_directory, 'experiment.xml'), 'wb') as output:
+                output.write(b'<experiment/>')
+
+        with patch('isarest.json2sra.convert', side_effect=convert):
+            response = self.client.post(
+                '/api/v1/convert/json-to-sra',
+                data=self.zip_payload({'study.json': b'{"study": 1}'}),
+                content_type=self.ZIP_MIME
+            )
+        self.assert_zip_response(response, {'experiment.xml': b'<experiment/>'})
+
+    def test_tab_to_cedar_zero_one_and_multiple_json_outputs(self):
+        payload = self.zip_payload({'i_study.txt': b'study'})
+        for count in (0, 1, 2):
+            with self.subTest(count=count):
+                cedar = Mock()
+
+                def create(source, _target, combined):
+                    self.assertTrue(combined)
+                    for index in range(count):
+                        with open(os.path.join(source, 'cedar{}.json'.format(index)), 'w') as output:
+                            json.dump({'cedar': index}, output)
+
+                cedar.createCEDARjson.side_effect = create
+                with patch('isarest.ISATab2CEDAR', return_value=cedar):
+                    response = self.client.post(
+                        '/api/v1/convert/tab-to-cedar', data=payload,
+                        content_type=self.ZIP_MIME
+                    )
+                if count == 1:
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.get_json(), {'cedar': 0})
+                else:
+                    self.assert_error(response, 500, 'Conversion failed')
+
+    def test_json_validation_success(self):
+        with patch('isarest.isajson.validate', return_value={'valid': True}) as validate:
+            response = self.client.post(
+                '/api/v1/validate/json', data=b'{"study": 1}',
+                content_type=self.JSON_MIME
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'valid': True})
+        validate.assert_called_once()
+
+    def test_isatab_validation_investigation_file_cardinality_and_success(self):
+        for files in (
+                {'s_study.txt': b'study'},
+                {'i_one.txt': b'one', 'i_two.txt': b'two'}
+        ):
+            with self.subTest(files=tuple(files)):
+                response = self.client.post(
+                    '/api/v1/validate/isatab', data=self.zip_payload(files),
+                    content_type=self.ZIP_MIME
+                )
+                self.assert_error(
+                    response, 400,
+                    'Archive must contain exactly one investigation file'
+                )
+
+        with patch('isarest.isatab.validate', return_value={'valid': True}) as validate:
+            response = self.client.post(
+                '/api/v1/validate/isatab',
+                data=self.zip_payload({'i_study.txt': b'study'}),
+                content_type=self.ZIP_MIME
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'valid': True})
+        validate.assert_called_once()
+
+    def test_metabolomics_workbench_successful_zip(self):
+        def convert(studyid, outputdir, **options):
+            self.assertEqual(options, {'dl_option': 'no', 'validate_option': 'no'})
+            study_directory = os.path.join(outputdir, studyid)
+            os.mkdir(study_directory)
+            with open(os.path.join(study_directory, 'i_study.txt'), 'wb') as output:
+                output.write(b'imported')
+
+        with patch('isarest.mw2isa.mw2isa_convert', side_effect=convert):
+            response = self.client.get('/api/v1/import/mw/ST000367')
+        self.assert_zip_response(response, {'i_study.txt': b'imported'})
+
+    def test_sampletab_conversion_successes(self):
+        def to_tab(input_file, output_directory):
+            self.assertEqual(input_file.read(), 'sample')
+            with open(os.path.join(output_directory, 'i_sample.txt'), 'wb') as output:
+                output.write(b'tab')
+
+        with patch('isarest.sampletab2isatab.convert', side_effect=to_tab):
+            response = self.client.post(
+                '/api/v1/convert/sampletab-to-isatab', data=b'sample',
+                content_type=self.SAMPLE_MIME
+            )
+        self.assert_zip_response(response, {'i_sample.txt': b'tab'})
+
+        def to_json(input_file, output_file):
+            self.assertEqual(input_file.read(), 'sample')
+            json.dump({'sample': 1}, output_file)
+
+        with patch('isarest.sampletab2json.convert', side_effect=to_json):
+            response = self.client.post(
+                '/api/v1/convert/sampletab-to-json', data=b'sample',
+                content_type=self.SAMPLE_MIME
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'sample': 1})
+
+    def test_json_to_sampletab_successful_exact_text(self):
+        def convert(input_file, output_file):
+            self.assertEqual(json.load(input_file), {'study': 1})
+            output_file.write('Sample Name\tFactor\nS1\tcontrol\n')
+
+        with patch('isarest.json2sampletab.convert', side_effect=convert):
+            response = self.client.post(
+                '/api/v1/convert/json-to-sampletab', data=b'{"study": 1}',
+                content_type=self.JSON_MIME
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, self.SAMPLE_MIME)
+        self.assertEqual(response.data, b'Sample Name\tFactor\nS1\tcontrol\n')
+
+    def test_isatab_to_sampletab_cardinality_and_success(self):
+        for files in (
+                {'s_study.txt': b'study'},
+                {'i_one.txt': b'one', 'i_two.txt': b'two'}
+        ):
+            with self.subTest(files=tuple(files)):
+                response = self.client.post(
+                    '/api/v1/convert/isatab-to-sampletab',
+                    data=self.zip_payload(files), content_type=self.ZIP_MIME
+                )
+                self.assert_error(
+                    response, 400,
+                    'Archive must contain exactly one investigation file'
+                )
+
+        def convert(input_file, output_file):
+            self.assertEqual(input_file.read(), 'study')
+            output_file.write('Sample Name\nS1\n')
+
+        with patch('isarest.isatab2sampletab.convert', side_effect=convert):
+            response = self.client.post(
+                '/api/v1/convert/isatab-to-sampletab',
+                data=self.zip_payload({'i_study.txt': b'study'}),
+                content_type=self.ZIP_MIME
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, self.SAMPLE_MIME)
+        self.assertEqual(response.data, b'Sample Name\nS1\n')
+
+    def test_magetab_to_json_cardinality_none_and_success(self):
+        for files in (
+                {'study.sdrf.txt': b'sdrf'},
+                {'one.idf.txt': b'one', 'two.idf.txt': b'two'}
+        ):
+            with self.subTest(files=tuple(files)):
+                response = self.client.post(
+                    '/api/v1/convert/magetab-to-json',
+                    data=self.zip_payload(files), content_type=self.ZIP_MIME
+                )
+                self.assert_error(
+                    response, 400, 'Archive must contain exactly one IDF file'
+                )
+
+        payload = self.zip_payload({'study.idf.txt': b'idf'})
+        with patch('isarest.magetab2json.convert', return_value=None):
+            response = self.client.post(
+                '/api/v1/convert/magetab-to-json', data=payload,
+                content_type=self.ZIP_MIME
+            )
+        self.assert_error(response, 500, 'Conversion failed')
+
+        with patch(
+            'isarest.magetab2json.convert', return_value={'investigation': 1}
+        ) as convert:
+            response = self.client.post(
+                '/api/v1/convert/magetab-to-json', data=payload,
+                content_type=self.ZIP_MIME
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {'investigation': 1})
+        convert.assert_called_once()
 
 
 class BaseConverterTestCase(unittest.TestCase):
