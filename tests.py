@@ -1,3 +1,5 @@
+import copy
+import importlib
 import io
 import json
 import os
@@ -7,8 +9,15 @@ import unittest
 import zipfile
 from unittest.mock import ANY, patch
 
+import config as service_config
 from api.archive import InvalidArchive, extract_validated_zip
-from api.create import validate_design_config
+from api.create import _error_response, validate_design_config
+from api.validation import (
+    MAX_ARMS,
+    MAX_ASSAY_COMBINATIONS,
+    MAX_SAMPLE_SIZE,
+    MAX_SUBJECT_SIZE,
+)
 from isarest import app
 
 
@@ -180,6 +189,200 @@ class ArchiveSecurityTests(unittest.TestCase):
              self.make_member('folder/file.TXT')],
             'Archive contains duplicate member paths'
         )
+
+
+class DesignConfigValidationTests(unittest.TestCase):
+
+    @staticmethod
+    def make_config():
+        return {
+            'arms': {
+                'selected': [{'name': 'control', 'size': 10}]
+            },
+            'samplePlan': [{
+                'sampleTypeSizes': {'control': [1]}
+            }],
+            'assayPlan': []
+        }
+
+    @staticmethod
+    def assay(name, *nodes):
+        return {'name': name, 'workflow': list(nodes)}
+
+    @staticmethod
+    def combination_node(*value_counts):
+        node = {'#replicates': 1}
+        for index, count in enumerate(value_counts):
+            node['parameter{}'.format(index)] = {'values': list(range(count))}
+        return node
+
+    def test_validation_constants(self):
+        self.assertEqual(MAX_SUBJECT_SIZE, 1000)
+        self.assertEqual(MAX_ARMS, 20)
+        self.assertEqual(MAX_SAMPLE_SIZE, 10000)
+        self.assertEqual(MAX_ASSAY_COMBINATIONS, 32)
+
+    def test_valid_configuration_and_none_sample_sizes(self):
+        design = self.make_config()
+        design['samplePlan'][0]['sampleTypeSizes']['control'] = [None, 1]
+        design['assayPlan'] = [self.assay(
+            'baseline',
+            {'parameter': {'values': list(range(100))}},
+            self.combination_node(2, 3)
+        )]
+
+        self.assertIsNone(validate_design_config(design))
+
+    def test_rejects_too_many_arms(self):
+        design = self.make_config()
+        design['arms']['selected'] = [
+            {'name': 'arm{}'.format(index), 'size': 1}
+            for index in range(MAX_ARMS + 1)
+        ]
+
+        self.assertEqual(
+            validate_design_config(design),
+            {'arms': 'too many study arms. Current limit is 20, user provided 21'}
+        )
+
+    def test_rejects_oversized_arm(self):
+        design = self.make_config()
+        design['arms']['selected'][0]['size'] = MAX_SUBJECT_SIZE + 1
+
+        self.assertEqual(
+            validate_design_config(design),
+            {'size': 'at least one group size exceeds the limit of 1000 subjects'}
+        )
+
+    def test_rejects_oversized_sample_plan(self):
+        design = self.make_config()
+        design['arms']['selected'][0]['size'] = MAX_SUBJECT_SIZE
+        design['samplePlan'][0]['sampleTypeSizes']['control'] = [
+            None, MAX_SAMPLE_SIZE // MAX_SUBJECT_SIZE + 1
+        ]
+
+        self.assertEqual(
+            validate_design_config(design),
+            {'sampleSize': 'at least one sample plan exceeds the limit of maximum sample size'}
+        )
+
+    def test_assay_combination_boundaries(self):
+        for combinations in (
+                MAX_ASSAY_COMBINATIONS - 1,
+                MAX_ASSAY_COMBINATIONS
+        ):
+            with self.subTest(combinations=combinations):
+                design = self.make_config()
+                design['assayPlan'] = [self.assay(
+                    'within-limit', self.combination_node(combinations)
+                )]
+                self.assertIsNone(validate_design_config(design))
+
+        design = self.make_config()
+        design['assayPlan'] = [self.assay(
+            'over-limit', self.combination_node(MAX_ASSAY_COMBINATIONS + 1)
+        )]
+        self.assertEqual(
+            validate_design_config(design),
+            {'assayPlan': {
+                'over-limit':
+                    'assay exceeds maximum type of 32 allowed combinations: 33'
+            }}
+        )
+
+    def test_reports_multiple_oversized_assay_types(self):
+        design = self.make_config()
+        design['assayPlan'] = [
+            self.assay('sequencing', self.combination_node(33)),
+            self.assay('metabolomics', self.combination_node(6, 6)),
+        ]
+
+        self.assertEqual(
+            validate_design_config(design),
+            {'assayPlan': {
+                'sequencing':
+                    'assay exceeds maximum type of 32 allowed combinations: 33',
+                'metabolomics':
+                    'assay exceeds maximum type of 32 allowed combinations: 36'
+            }}
+        )
+
+    def test_error_response_with_and_without_details(self):
+        with app.app_context():
+            response = _error_response(400, 'invalid input')
+            detailed = _error_response(422, 'invalid design', {'arms': 'invalid'})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(),
+            {'status': 400, 'error': {'message': 'invalid input'}}
+        )
+        self.assertEqual(detailed.status_code, 422)
+        self.assertEqual(
+            detailed.get_json(),
+            {
+                'status': 422,
+                'error': {
+                    'message': 'invalid design',
+                    'details': {'arms': 'invalid'}
+                }
+            }
+        )
+
+
+class ConfigurationTests(unittest.TestCase):
+
+    CONFIG_KEYS = (
+        'DEBUG', 'PORT', 'APP_BASE_LINK', 'UPLOAD_FOLDER',
+        'MAX_CONTENT_LENGTH', 'MAX_ARCHIVE_MEMBERS',
+        'MAX_ARCHIVE_MEMBER_SIZE', 'MAX_ARCHIVE_TOTAL_SIZE'
+    )
+
+    @classmethod
+    def reload_with_environment(cls, environment, **overrides):
+        controlled_environment = {'ENVIRONMENT': environment}
+        controlled_environment.update(overrides)
+        try:
+            with patch.dict(os.environ, controlled_environment, clear=True):
+                importlib.reload(service_config)
+                values = {
+                    key: getattr(service_config, key) for key in cls.CONFIG_KEYS
+                }
+        finally:
+            # Restore module globals as well as os.environ for later tests.
+            importlib.reload(service_config)
+        return values
+
+    def test_development_test_and_production_modes(self):
+        original_environment = copy.deepcopy(dict(os.environ))
+        for environment, expected_debug in (
+                ('dev', True), ('test', False), ('production', False)
+        ):
+            with self.subTest(environment=environment):
+                values = self.reload_with_environment(environment)
+                self.assertEqual(values['DEBUG'], expected_debug)
+                self.assertEqual(values['PORT'], 5000)
+                self.assertEqual(values['APP_BASE_LINK'], 'http://localhost:5000')
+                self.assertEqual(values['UPLOAD_FOLDER'], '/tmp')
+        self.assertEqual(dict(os.environ), original_environment)
+
+    def test_upload_folder_and_numeric_limit_overrides(self):
+        original_environment = copy.deepcopy(dict(os.environ))
+        values = self.reload_with_environment(
+            'production',
+            UPLOAD_FOLDER='/srv/isa-uploads',
+            MAX_CONTENT_LENGTH='101',
+            MAX_ARCHIVE_MEMBERS='102',
+            MAX_ARCHIVE_MEMBER_SIZE='103',
+            MAX_ARCHIVE_TOTAL_SIZE='104'
+        )
+
+        self.assertEqual(values['UPLOAD_FOLDER'], '/srv/isa-uploads')
+        self.assertEqual(values['MAX_CONTENT_LENGTH'], 101)
+        self.assertEqual(values['MAX_ARCHIVE_MEMBERS'], 102)
+        self.assertEqual(values['MAX_ARCHIVE_MEMBER_SIZE'], 103)
+        self.assertEqual(values['MAX_ARCHIVE_TOTAL_SIZE'], 104)
+        self.assertEqual(dict(os.environ), original_environment)
 
 
 class BaseConverterTestCase(unittest.TestCase):
