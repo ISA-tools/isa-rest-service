@@ -45,6 +45,11 @@ Run the test suite with branch coverage enabled:
 An HTML report can be generated with `python -m coverage html` and opened from
 `htmlcov/index.html`.
 
+The normal suite mocks the external Metabolomics Workbench service. Run its
+live integration check separately when network access is intended:
+
+    python -m unittest integration_tests
+
 Contributing
 ------------
 We would be very happy to receive any help and contributions (testing, feature requests, pull requests). Please feel free to contact our development team, ask a question, report a bug or file a feature request in the Github issue tracker, or fork our repository.
