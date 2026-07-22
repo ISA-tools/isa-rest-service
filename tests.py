@@ -7,7 +7,8 @@ import stat
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import ANY, patch
+from contextlib import redirect_stdout
+from unittest.mock import ANY, Mock, patch
 
 import config as service_config
 from api.archive import InvalidArchive, extract_validated_zip
@@ -19,6 +20,7 @@ from api.validation import (
     MAX_SUBJECT_SIZE,
 )
 from isarest import app
+from isarest_client import IsaRestClient
 
 
 class MemberListArchive:
@@ -383,6 +385,217 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(values['MAX_ARCHIVE_MEMBER_SIZE'], 103)
         self.assertEqual(values['MAX_ARCHIVE_TOTAL_SIZE'], 104)
         self.assertEqual(dict(os.environ), original_environment)
+
+
+class IsaRestClientTests(unittest.TestCase):
+
+    BASE_URL = 'https://isa.example.test'
+    PAYLOAD = b'input payload'
+    JSON_RESULT = {'result': ['one', 'two']}
+    BINARY_RESULT = b'output payload\x00\xff'
+
+    @staticmethod
+    def response(*, ok, status_code, content=b'', json_result=None):
+        response = Mock()
+        response.ok = ok
+        response.status_code = status_code
+        response.content = content
+        response.json.return_value = json_result
+        return response
+
+    def assert_post_file_method(
+            self,
+            method_name,
+            endpoint,
+            content_type,
+            output_name,
+            *,
+            json_output=False
+    ):
+        with tempfile.TemporaryDirectory() as destination:
+            client = IsaRestClient(self.BASE_URL, destination)
+            successful = self.response(
+                ok=True,
+                status_code=200,
+                content=self.BINARY_RESULT,
+                json_result=self.JSON_RESULT
+            )
+            with patch('isarest_client.requests.post', return_value=successful) as post:
+                with redirect_stdout(io.StringIO()):
+                    output_path = getattr(client, method_name)(self.PAYLOAD)
+
+            post.assert_called_once_with(
+                self.BASE_URL + endpoint,
+                headers={'Content-type': content_type},
+                data=self.PAYLOAD,
+                verify=False
+            )
+            self.assertEqual(
+                output_path, os.path.abspath(os.path.join(destination, output_name))
+            )
+            if json_output:
+                successful.json.assert_called_once_with()
+                with open(output_path) as output:
+                    self.assertEqual(json.load(output), self.JSON_RESULT)
+            else:
+                with open(output_path, 'rb') as output:
+                    self.assertEqual(output.read(), self.BINARY_RESULT)
+
+        with tempfile.TemporaryDirectory() as destination:
+            client = IsaRestClient(self.BASE_URL, destination)
+            unsuccessful = self.response(ok=False, status_code=400)
+            with patch('isarest_client.requests.post', return_value=unsuccessful) as post:
+                with redirect_stdout(io.StringIO()):
+                    result = getattr(client, method_name)(self.PAYLOAD)
+
+            post.assert_called_once_with(
+                self.BASE_URL + endpoint,
+                headers={'Content-type': content_type},
+                data=self.PAYLOAD,
+                verify=False
+            )
+            self.assertIsNone(result)
+            self.assertEqual(os.listdir(destination), [])
+
+    def assert_validation_method(self, method_name, endpoint, content_type):
+        client = IsaRestClient(self.BASE_URL)
+        report = b'{"valid": true}'
+        successful = self.response(ok=True, status_code=200, content=report)
+        with patch('isarest_client.requests.post', return_value=successful) as post:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = getattr(client, method_name)(self.PAYLOAD)
+
+        post.assert_called_once_with(
+            self.BASE_URL + endpoint,
+            headers={'Content-type': content_type},
+            data=self.PAYLOAD,
+            verify=False
+        )
+        self.assertIsNone(result)
+        self.assertEqual(
+            output.getvalue(),
+            "HTTP response code: 200\n{}\n".format(report)
+        )
+
+        unsuccessful = self.response(ok=False, status_code=422, content=b'ignored')
+        with patch('isarest_client.requests.post', return_value=unsuccessful) as post:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = getattr(client, method_name)(self.PAYLOAD)
+
+        post.assert_called_once_with(
+            self.BASE_URL + endpoint,
+            headers={'Content-type': content_type},
+            data=self.PAYLOAD,
+            verify=False
+        )
+        self.assertIsNone(result)
+        self.assertEqual(output.getvalue(), 'HTTP response code: 422\n')
+
+    def test_constructor_defaults_and_explicit_values(self):
+        default_client = IsaRestClient()
+        self.assertEqual(default_client.baseurl, 'http://localhost:5000')
+        self.assertEqual(default_client.dl_folder, '/tmp')
+
+        explicit_client = IsaRestClient(self.BASE_URL, '/var/tmp/isa')
+        self.assertEqual(explicit_client.baseurl, self.BASE_URL)
+        self.assertEqual(explicit_client.dl_folder, '/var/tmp/isa')
+
+    def test_convert_tab_to_json(self):
+        self.assert_post_file_method(
+            'convert_tab_to_json', '/api/v1/convert/tab-to-json',
+            'application/zip', 'out.json', json_output=True
+        )
+
+    def test_convert_json_to_tab(self):
+        self.assert_post_file_method(
+            'convert_json_to_tab', '/api/v1/convert/json-to-tab',
+            'application/json', 'out.zip'
+        )
+
+    def test_convert_json_to_sra(self):
+        self.assert_post_file_method(
+            'convert_json_to_sra', '/api/v1/convert/json-to-sra',
+            'application/zip', 'out.zip'
+        )
+
+    def test_convert_tab_to_sra(self):
+        self.assert_post_file_method(
+            'convert_tab_to_sra', '/api/v1/convert/tab-to-sra',
+            'application/zip', 'out.zip'
+        )
+
+    def test_convert_tab_to_cedar(self):
+        self.assert_post_file_method(
+            'convert_tab_to_cedar', '/api/v1/convert/tab-to-cedar',
+            'application/zip', 'out.json', json_output=True
+        )
+
+    def test_validate_json(self):
+        self.assert_validation_method(
+            'validate_json', '/api/v1/validate/json', 'application/json'
+        )
+
+    def test_validate_isatab(self):
+        self.assert_validation_method(
+            'validate_isatab', '/api/v1/validate/isatab', 'application/zip'
+        )
+
+    def test_convert_sampletab_to_tab(self):
+        self.assert_post_file_method(
+            'convert_sampletab_to_tab', '/api/v1/convert/sampletab-to-isatab',
+            'text/tab-separated-values', 'out.zip'
+        )
+
+    def test_convert_sampletab_to_json(self):
+        self.assert_post_file_method(
+            'convert_sampletab_to_json', '/api/v1/convert/sampletab-to-json',
+            'text/tab-separated-values', 'out.json', json_output=True
+        )
+
+    def test_import_mw_to_tab(self):
+        with tempfile.TemporaryDirectory() as destination:
+            client = IsaRestClient(self.BASE_URL, destination)
+            successful = self.response(
+                ok=True, status_code=200, content=self.BINARY_RESULT
+            )
+            with patch('isarest_client.requests.get', return_value=successful) as get:
+                with redirect_stdout(io.StringIO()):
+                    output_path = client.import_mw_to_tab('ST000367')
+
+            get.assert_called_once_with(
+                self.BASE_URL + '/api/v1/import/mw/ST000367'
+            )
+            self.assertEqual(
+                output_path,
+                os.path.abspath(os.path.join(destination, 'out.zip'))
+            )
+            with open(output_path, 'rb') as output:
+                self.assertEqual(output.read(), self.BINARY_RESULT)
+
+        with tempfile.TemporaryDirectory() as destination:
+            client = IsaRestClient(self.BASE_URL, destination)
+            unsuccessful = self.response(ok=False, status_code=404)
+            with patch('isarest_client.requests.get', return_value=unsuccessful) as get:
+                with redirect_stdout(io.StringIO()):
+                    result = client.import_mw_to_tab('missing')
+
+            get.assert_called_once_with(self.BASE_URL + '/api/v1/import/mw/missing')
+            self.assertIsNone(result)
+            self.assertEqual(os.listdir(destination), [])
+
+    def test_convert_tab_to_sampletab(self):
+        self.assert_post_file_method(
+            'convert_tab_to_sampletab', '/api/v1/convert/isatab-to-sampletab',
+            'application/zip', 'out.txt'
+        )
+
+    def test_convert_json_to_sampletab(self):
+        self.assert_post_file_method(
+            'convert_json_to_sampletab', '/api/v1/convert/json-to-sampletab',
+            'application/json', 'out.txt'
+        )
 
 
 class BaseConverterTestCase(unittest.TestCase):
