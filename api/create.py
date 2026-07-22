@@ -68,7 +68,7 @@ def validate_design_config(config):
         for node in assay_type['workflow']:
             if '#replicates' in node:
                 combinations = reduce(
-                    lambda param, val: len(param["values"])*val,
+                    lambda total, param: total * len(param["values"]),
                     [val for key, val in node.items() if key != '#replicates'],
                     1
                 )

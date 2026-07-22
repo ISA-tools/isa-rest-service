@@ -33,10 +33,13 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
-        run: |
-          python -m coverage run -m unittest tests
-          python -m coverage report -m
-          python -m coverage xml
+        run: python -m coverage run -m unittest tests
+
+      - name: Enforce 100% coverage
+        run: python -m coverage report -m
+
+      - name: Generate coverage XML
+        run: python -m coverage xml
 
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2

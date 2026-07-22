@@ -4,14 +4,23 @@ relative_files = True
 source = .
 omit =
     tests.py
+    integration_tests.py
     src/*
     .venv/*
     .venv39/*
     */site-packages/*
 
 [report]
+omit =
+    tests.py
+    integration_tests.py
+    src/*
+    .venv/*
+    .venv39/*
+    */site-packages/*
 show_missing = True
 skip_empty = True
+fail_under = 100
 
 [html]
 directory = htmlcov
