@@ -42,6 +42,9 @@ Run the test suite with branch coverage enabled:
     python -m coverage run -m unittest tests
     python -m coverage report -m
 
+The report command enforces 100% statement and branch coverage and exits with
+an error if coverage regresses.
+
 An HTML report can be generated with `python -m coverage html` and opened from
 `htmlcov/index.html`.
 
