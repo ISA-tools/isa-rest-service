@@ -1,13 +1,14 @@
 import os
-import uuid
-import shutil
 import json
 import io
 import zipfile
-from flask import Flask, Response, request, jsonify, send_file, make_response
+from tempfile import TemporaryDirectory
+
+from flask import Flask, Response, current_app, request, jsonify, send_file
 from flask_restful import Api, Resource
 from flask_restful_swagger import swagger
 from flask_cors import CORS
+from werkzeug.exceptions import RequestEntityTooLarge
 import config
 
 from isatools.convert import isatab2json, isatab2sra, json2isatab, json2sra, sampletab2isatab, sampletab2json, \
@@ -17,43 +18,74 @@ from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
 
 from api.create import ISAStudyDesign
+from api.archive import InvalidArchive, extract_validated_zip
 
 
-def _allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1] in config.ALLOWED_EXTENSIONS
+SCIENTIFIC_DATA_EXTENSIONS = {
+    '.bai', '.bam', '.cel', '.cram', '.csv', '.fastq', '.fq', '.gpr', '.gz',
+    '.mzml', '.mzxml', '.nmrml', '.raw', '.sff', '.tsv', '.xml'
+}
+ISA_TAB_EXTENSIONS = {'.txt'} | SCIENTIFIC_DATA_EXTENSIONS
+ISA_JSON_EXTENSIONS = {'.json'} | SCIENTIFIC_DATA_EXTENSIONS
+MAGE_TAB_EXTENSIONS = {'.txt'} | SCIENTIFIC_DATA_EXTENSIONS
 
 
-def _zipdir(path, ziph):
-    # ziph is zipfile handle
-    for file in os.listdir(path):
-        ziph.write(os.path.join(path, file), file)
-
-
-def _create_temp_dir():
-    unique_id = str(uuid.uuid4())
-    if not os.path.exists(config.UPLOAD_FOLDER):
+def _temporary_directory():
+    if not os.path.isdir(config.UPLOAD_FOLDER):
         raise IOError("UPLOAD_FOLDER does not exist in file system or is not read/write-able")
-    ul_dir = os.path.join(config.UPLOAD_FOLDER, unique_id)
-    os.mkdir(ul_dir)
-    if os.path.exists(ul_dir):
-        return ul_dir
+    return TemporaryDirectory(dir=config.UPLOAD_FOLDER)
+
+
+def _zip_directory(path):
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        for root, _, files in os.walk(path):
+            for filename in files:
+                file_path = os.path.join(root, filename)
+                archive.write(file_path, os.path.relpath(file_path, path))
+    payload.seek(0)
+    return payload
 
 
 def _write_request_data(request_, tmp_dir, file_name):
-    data = request_.get_data()
     file_path = os.path.join(tmp_dir, file_name)
-    fd = os.open(file_path, os.O_CREAT | os.O_RDWR)
-    os.write(fd, data)
-    if os.path.exists(file_path):
-        return file_path
+    with open(file_path, 'wb') as output:
+        output.write(request_.get_data())
+    return file_path
 
 
-def _file_to_response(response, file_path, mimetype):
-    with open(file_path, 'rb') as fd:
-        response.set_data(fd.read())
-    response.headers.add('content-length', str(len(response.get_data())))
-    response.mimetype = mimetype
+def _extract_archive(file_path, destination, allowed_extensions):
+    try:
+        with zipfile.ZipFile(file_path, 'r') as archive:
+            return extract_validated_zip(
+                archive,
+                destination,
+                allowed_extensions=allowed_extensions,
+                max_members=config.MAX_ARCHIVE_MEMBERS,
+                max_member_size=config.MAX_ARCHIVE_MEMBER_SIZE,
+                max_total_size=config.MAX_ARCHIVE_TOTAL_SIZE
+            )
+    except (zipfile.BadZipFile, zipfile.LargeZipFile) as error:
+        raise InvalidArchive("Request does not contain a valid ZIP archive") from error
+
+
+def _extract_request_archive(request_, tmp_dir, allowed_extensions):
+    file_path = _write_request_data(request_, tmp_dir, 'input.zip')
+    extraction_dir = os.path.join(tmp_dir, 'extracted')
+    os.mkdir(extraction_dir)
+    extracted_files = _extract_archive(file_path, extraction_dir, allowed_extensions)
+    return extraction_dir, extracted_files
+
+
+def _error_response(status, message):
+    response = jsonify(status=status, error={'message': message})
+    response.status_code = status
     return response
+
+
+def _conversion_error(message):
+    current_app.logger.exception(message)
+    return _error_response(500, "Conversion failed")
 
 
 class ConvertTabToJson(Resource):
@@ -85,41 +117,19 @@ class ConvertTabToJson(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == "application/zip":
-            tmp_dir = None
-            tmp_file = None
-            J = None
-            try:
-                # Write request data to file
-                tmp_file = str(uuid.uuid4()) + ".zip"
-                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
-                if file_path is None:
-                    return Response(500)
-                # Extract ISArchive files
-                with zipfile.ZipFile(file_path, 'r') as z:
-                    # Create temporary directory
-                    tmp_dir = _create_temp_dir()
-                    if tmp_dir is None:
-                        return Response(500)
-                    z.extractall(tmp_dir)
-                    # Convert
-                    src_dir = os.path.normpath(tmp_dir)
-                    J = isatab2json.convert(src_dir, validate_first=False, use_new_parser=True)
-                    if J is None:
-                        raise IOError("Could not generate JSON from input ISA-Tab")
-            except Exception as e:
-                print("Error: {}".format(e))
-                return Response(status=500)
-            finally:
-                # cleanup generated directories
-                try:
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                    os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
-                except:
-                    pass
-            response = jsonify(J)
-        return response
+        if request.mimetype != "application/zip":
+            return _error_response(415, "Expected application/zip")
+        try:
+            with _temporary_directory() as tmp_dir:
+                src_dir, _ = _extract_request_archive(request, tmp_dir, ISA_TAB_EXTENSIONS)
+                result = isatab2json.convert(src_dir, validate_first=False, use_new_parser=True)
+                if result is None:
+                    raise IOError("Could not generate JSON from input ISA-Tab")
+                return jsonify(result)
+        except InvalidArchive as error:
+            return _error_response(400, str(error))
+        except Exception:
+            return _conversion_error("Could not convert ISA-Tab to JSON")
 
 
 class ConvertJsonToTab(Resource):
@@ -151,28 +161,17 @@ class ConvertJsonToTab(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == "application/json":
-            tmp_file = str(uuid.uuid4()) + ".json"
-            tmp_dir = _create_temp_dir()
-            try:
-                # Write request data to file
-                file_path = _write_request_data(request, tmp_dir, tmp_file)
-                if file_path is None:
-                    return Response(500)
+        if request.mimetype != "application/json":
+            return _error_response(415, "Expected application/json")
+        try:
+            with _temporary_directory() as tmp_dir:
+                file_path = _write_request_data(request, tmp_dir, 'input.json')
                 with open(file_path) as fd:
                     json2isatab.convert(fd, tmp_dir)
                 os.remove(file_path)
-                memf = io.BytesIO()
-                with zipfile.ZipFile(memf, 'w') as zf:
-                    for file in os.listdir(tmp_dir):
-                        zf.write(os.path.join(tmp_dir, file), file)
-                memf.seek(0)
-                response = send_file(memf, mimetype='application/zip')
-            finally:
-                # cleanup generated directories
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-        return response
+                return send_file(_zip_directory(tmp_dir), mimetype='application/zip')
+        except Exception:
+            return _conversion_error("Could not convert JSON to ISA-Tab")
 
 
 class ConvertTabToSra(Resource):
@@ -204,44 +203,17 @@ class ConvertTabToSra(Resource):
         ]
     )
     def post(self):
-        response = Response(status=500)
-        # Create temporary directory
-        tmp_dir = _create_temp_dir()
-        target_tmp_dir = _create_temp_dir()
+        if request.mimetype != "application/zip":
+            return _error_response(415, "Expected application/zip")
         try:
-            if tmp_dir is None or target_tmp_dir is None:
-                raise IOError("Could not create temporary directory " + tmp_dir)
-            if not request.mimetype == "application/zip":
-                raise TypeError("Incorrect media type received. Got " + request.mimetype + ", expected application/zip")
-            else:
-                # Write request data to file
-                file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
-                if file_path is None:
-                    raise IOError("Could not create temporary file " + file_path)
-
-                with zipfile.ZipFile(file_path, 'r') as z:
-                    # extract ISArchive files
-                    z.extractall(tmp_dir)
-                    src_dir = os.path.normpath(tmp_dir)
-                    # convert to SRA writes to /sra
-                    isatab2sra.convert(src_dir, target_tmp_dir, validate_first=False)
-                    memf = io.BytesIO()
-                    with zipfile.ZipFile(memf, 'w') as zf:
-                        for file in os.listdir(target_tmp_dir):
-                            print("Adding {} to zip".format(os.path.join(target_tmp_dir, file)))
-                            zf.write(os.path.join(target_tmp_dir, file), file)
-                    memf.seek(0)
-                    response = send_file(memf, mimetype='application/zip')
-        except TypeError as t:
-            print("TypeError: {}".format(t))
-            response = Response(status=415)
-        except Exception as e:
-            print("Error: {}".format(e))
-            response = Response(status=500)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            shutil.rmtree(target_tmp_dir, ignore_errors=True)
-            return response
+            with _temporary_directory() as tmp_dir, _temporary_directory() as target_tmp_dir:
+                src_dir, _ = _extract_request_archive(request, tmp_dir, ISA_TAB_EXTENSIONS)
+                isatab2sra.convert(src_dir, target_tmp_dir, validate_first=False)
+                return send_file(_zip_directory(target_tmp_dir), mimetype='application/zip')
+        except InvalidArchive as error:
+            return _error_response(400, str(error))
+        except Exception:
+            return _conversion_error("Could not convert ISA-Tab to SRA")
 
 
 class ConvertJsonToSra(Resource):
@@ -273,46 +245,21 @@ class ConvertJsonToSra(Resource):
         ]
     )
     def post(self):
-        response = Response(status=500)
-        # Create temporary directory
-        tmp_dir = _create_temp_dir()
-        target_tmp_dir = _create_temp_dir()
+        if request.mimetype != "application/zip":
+            return _error_response(415, "Expected application/zip")
         try:
-            if tmp_dir is None:
-                raise IOError("Could not create temporary directory " + tmp_dir)
-            if not request.mimetype == "application/zip":
-                raise TypeError("Incorrect media type received. Got " + request.mimetype +
-                                ", expected application/zip")
-            else:
-                # Write request data to file
-                file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
-                if file_path is None:
-                    raise IOError("Could not create temporary file " + file_path)
-
-                with zipfile.ZipFile(file_path, 'r') as z:
-                    # extract ISArchive files
-                    z.extractall(tmp_dir)
-                    src_file_path = os.path.normpath(os.path.join(tmp_dir, z.filelist[0].filename))
-                    # find just the combined JSON
-                    with open(src_file_path) as json_fp:
-                        json2sra.convert(json_fp, target_tmp_dir, validate_first=False)
-                        memf = io.BytesIO()
-                        with zipfile.ZipFile(memf, 'w') as zf:
-                            for file in os.listdir(target_tmp_dir):
-                                print("Adding {} to zip".format(os.path.join(target_tmp_dir, file)))
-                                zf.write(os.path.join(target_tmp_dir, file), file)
-                        memf.seek(0)
-                        response = send_file(memf, mimetype='application/zip')
-        except TypeError as t:
-            print("TypeError: {}".format(t))
-            response = Response(status=415)
-        except Exception as e:
-            print("Error: {}".format(e))
-            response = Response(status=500)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            shutil.rmtree(target_tmp_dir, ignore_errors=True)
-            return response
+            with _temporary_directory() as tmp_dir, _temporary_directory() as target_tmp_dir:
+                _, extracted_files = _extract_request_archive(request, tmp_dir, ISA_JSON_EXTENSIONS)
+                json_files = [path for path in extracted_files if path.lower().endswith('.json')]
+                if len(json_files) != 1:
+                    raise InvalidArchive("Archive must contain exactly one JSON file")
+                with open(json_files[0]) as json_fp:
+                    json2sra.convert(json_fp, target_tmp_dir, validate_first=False)
+                return send_file(_zip_directory(target_tmp_dir), mimetype='application/zip')
+        except InvalidArchive as error:
+            return _error_response(400, str(error))
+        except Exception:
+            return _conversion_error("Could not convert ISA JSON to SRA")
 
 
 class ConvertTabToCedar(Resource):
@@ -344,41 +291,22 @@ class ConvertTabToCedar(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == "application/zip":
-            try:
-                # Write request data to file
-                tmp_file = str(uuid.uuid4()) + ".zip"
-                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
-                if file_path is None:
-                    return Response(500)
-                # Extract ISArchive files
-                with zipfile.ZipFile(file_path, 'r') as z:
-                    # Create temporary directory
-                    tmp_dir = _create_temp_dir()
-                    if tmp_dir is None:
-                        return Response(500)
-                    z.extractall(tmp_dir)
-                    # Convert
-                    src_dir = os.path.normpath(tmp_dir)
-                    tab2cedar = ISATab2CEDAR('http://www.isa-tools.org/')
-                    tab2cedar.createCEDARjson(src_dir, src_dir, True)
-                    # return just the combined JSON
-                    files = [f for f in os.listdir(src_dir) if f.endswith('.json')]
-                    if len(files) == 1:  # current assumption is that only one JSON should exist to know what to return
-                        combined_json_file = os.path.join(src_dir, files[0])
-                        combined_json = json.load(open(combined_json_file))
-                    else:
-                        raise IOError("More than one .json was output - cannot disambiguate what to return")
-            except Exception as e:
-                print("Error: {}".format(e))
-                return Response(status=500)
-            finally:
-                # cleanup generated directories
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
-            response = jsonify(combined_json)
-        return response
+        if request.mimetype != "application/zip":
+            return _error_response(415, "Expected application/zip")
+        try:
+            with _temporary_directory() as tmp_dir:
+                src_dir, _ = _extract_request_archive(request, tmp_dir, ISA_TAB_EXTENSIONS)
+                tab2cedar = ISATab2CEDAR('http://www.isa-tools.org/')
+                tab2cedar.createCEDARjson(src_dir, src_dir, True)
+                files = [name for name in os.listdir(src_dir) if name.endswith('.json')]
+                if len(files) != 1:
+                    raise IOError("Expected exactly one CEDAR JSON output")
+                with open(os.path.join(src_dir, files[0])) as combined_json_file:
+                    return jsonify(json.load(combined_json_file))
+        except InvalidArchive as error:
+            return _error_response(400, str(error))
+        except Exception:
+            return _conversion_error("Could not convert ISA-Tab to CEDAR JSON")
 
 
 class ValidateIsaJSON(Resource):
@@ -411,23 +339,16 @@ class ValidateIsaJSON(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == "application/json":
-            tmp_file = str(uuid.uuid4()) + ".json"
-            tmp_dir = _create_temp_dir()
-            try:
-                # Write request data to file
-                file_path = _write_request_data(request, tmp_dir, tmp_file)
-                if file_path is None:
-                    return Response(500)
-                result = isajson.validate(open(file_path))
-                response = jsonify(result)
-            except Exception:
-                response = Response(status=500)
-            finally:
-                # cleanup generated directories
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-        return response
+        if request.mimetype != "application/json":
+            return _error_response(415, "Expected application/json")
+        try:
+            with _temporary_directory() as tmp_dir:
+                file_path = _write_request_data(request, tmp_dir, 'input.json')
+                with open(file_path) as input_file:
+                    return jsonify(isajson.validate(input_file))
+        except Exception:
+            current_app.logger.exception("Could not validate ISA JSON")
+            return _error_response(500, "Validation failed")
 
 
 class ValidateIsaTab(Resource):
@@ -460,40 +381,24 @@ class ValidateIsaTab(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == "application/zip":
-            tmp_dir = _create_temp_dir()
-            try:
-                if tmp_dir is None:
-                    raise IOError("Could not create temporary directory " + tmp_dir)
-                if not request.mimetype == "application/zip":
-                    raise TypeError("Incorrect media type received. Got " + request.mimetype +
-                                    ", expected application/zip")
-                else:
-                    # Write request data to file
-                    file_path = _write_request_data(request, tmp_dir, 'isatab.zip')
-                    if file_path is None:
-                        raise IOError("Could not create temporary file " + file_path)
-
-                    # Setup path to configuration
-                    with zipfile.ZipFile(file_path, 'r') as z:
-                        # extract ISArchive files
-                        z.extractall(tmp_dir)
-                        i_file_list = [i.filename for i in z.filelist if 'i_' in i.filename and i.filename.endswith('.txt')]
-                        if len(i_file_list) == 1:
-                            src_file_path = os.path.normpath(os.path.join(tmp_dir, i_file_list[0]))
-                            fp = open(src_file_path)
-                            # find just the combined JSON
-                            result = isatab.validate(fp)
-                            response = jsonify(result)
-                        else:
-                            raise Exception("Could not resolve investigation file entry point")
-            except Exception:
-                response = Response(status=500)
-            finally:
-                # cleanup generated directories
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-        return response
+        if request.mimetype != "application/zip":
+            return _error_response(415, "Expected application/zip")
+        try:
+            with _temporary_directory() as tmp_dir:
+                _, extracted_files = _extract_request_archive(request, tmp_dir, ISA_TAB_EXTENSIONS)
+                investigation_files = [
+                    path for path in extracted_files
+                    if os.path.basename(path).startswith('i_') and path.endswith('.txt')
+                ]
+                if len(investigation_files) != 1:
+                    raise InvalidArchive("Archive must contain exactly one investigation file")
+                with open(investigation_files[0]) as input_file:
+                    return jsonify(isatab.validate(input_file))
+        except InvalidArchive as error:
+            return _error_response(400, str(error))
+        except Exception:
+            current_app.logger.exception("Could not validate ISA-Tab")
+            return _error_response(500, "Validation failed")
 
 
 class ImportMWToIsaTab(Resource):
@@ -522,22 +427,12 @@ class ImportMWToIsaTab(Resource):
         ]
     )
     def get(self, studyid):
-        tmp_dir = _create_temp_dir()
         try:
-            mw2isa.mw2isa_convert(studyid=studyid, outputdir=tmp_dir, dl_option="no", validate_option="no")
-            memf = io.BytesIO()
-            with zipfile.ZipFile(memf, 'w') as zf:
-                for file in os.listdir(os.path.join(tmp_dir, studyid)):
-                    print("Adding {} to zip".format(os.path.join(tmp_dir, studyid, file)))
-                    zf.write(os.path.join(tmp_dir, studyid, file), file)
-            memf.seek(0)
-            response = send_file(memf, mimetype='application/zip')
-        except Exception as e:
-            print("Error: {}".format(e))
-            response = Response(status=500)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-        return response
+            with _temporary_directory() as tmp_dir:
+                mw2isa.mw2isa_convert(studyid=studyid, outputdir=tmp_dir, dl_option="no", validate_option="no")
+                return send_file(_zip_directory(os.path.join(tmp_dir, studyid)), mimetype='application/zip')
+        except Exception:
+            return _conversion_error("Could not import Metabolomics Workbench study")
 
 
 class ConvertSampleTabToIsaTab(Resource):
@@ -569,34 +464,16 @@ class ConvertSampleTabToIsaTab(Resource):
         ]
     )
     def post(self):
-        response = Response(status=500)
-        tmp_file = str(uuid.uuid4()) + ".txt"
-        tmp_dir = _create_temp_dir()
-        target_tmp_dir = _create_temp_dir()
+        if request.mimetype != "text/tab-separated-values":
+            return _error_response(415, "Expected text/tab-separated-values")
         try:
-            # Write request data to file
-            file_path = _write_request_data(request, tmp_dir, tmp_file)
-            if file_path is None:
-                raise IOError("Could not create temporary file " + file_path)
-            with open(file_path) as fd:
-                sampletab2isatab.convert(fd, target_tmp_dir)
-            memf = io.BytesIO()
-            with zipfile.ZipFile(memf, 'w') as zf:
-                for file in os.listdir(target_tmp_dir):
-                    print("Adding {} to zip".format(os.path.join(target_tmp_dir, file)))
-                    zf.write(os.path.join(target_tmp_dir, file), file)
-            memf.seek(0)
-            response = send_file(memf, mimetype='application/zip')
-        except TypeError as t:
-            print("TypeError: {}".format(t))
-            response = Response(status=415)
-        except Exception as e:
-            print("Error: {}".format(e))
-            response = Response(status=500)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            shutil.rmtree(target_tmp_dir, ignore_errors=True)
-            return response
+            with _temporary_directory() as tmp_dir, _temporary_directory() as target_tmp_dir:
+                file_path = _write_request_data(request, tmp_dir, 'input.txt')
+                with open(file_path) as input_file:
+                    sampletab2isatab.convert(input_file, target_tmp_dir)
+                return send_file(_zip_directory(target_tmp_dir), mimetype='application/zip')
+        except Exception:
+            return _conversion_error("Could not convert SampleTab to ISA-Tab")
 
 
 class ConvertSampleTabToJson(Resource):
@@ -628,29 +505,18 @@ class ConvertSampleTabToJson(Resource):
         ]
     )
     def post(self):
-        response = Response(status=500)
-        tmp_file = str(uuid.uuid4()) + ".txt"
-        tmp_dir = _create_temp_dir()
-        tmp_json_file = str(uuid.uuid4()) + ".json"
+        if request.mimetype != "text/tab-separated-values":
+            return _error_response(415, "Expected text/tab-separated-values")
         try:
-            # Write request data to file
-            file_path = _write_request_data(request, tmp_dir, tmp_file)
-            if file_path is None:
-                raise IOError("Could not create temporary file " + file_path)
-            with open(file_path, 'r') as input_fp:
-                with open(os.path.join(tmp_dir, tmp_json_file), 'w') as json_fp:
-                    sampletab2json.convert(input_fp, json_fp)
-            with open(os.path.join(tmp_dir, tmp_json_file), 'r') as json_fp:
-                response = jsonify(json.load(json_fp))
-        except TypeError as t:
-            print("TypeError: {}".format(t))
-            response = Response(status=415)
-        except Exception as e:
-            print("Error: {}".format(e))
-            response = Response(status=500)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            return response
+            with _temporary_directory() as tmp_dir:
+                file_path = _write_request_data(request, tmp_dir, 'input.txt')
+                output_path = os.path.join(tmp_dir, 'output.json')
+                with open(file_path) as input_file, open(output_path, 'w') as output_file:
+                    sampletab2json.convert(input_file, output_file)
+                with open(output_path) as output_file:
+                    return jsonify(json.load(output_file))
+        except Exception:
+            return _conversion_error("Could not convert SampleTab to JSON")
 
 
 class ConvertJsonToSampleTab(Resource):
@@ -682,39 +548,18 @@ class ConvertJsonToSampleTab(Resource):
         ]
     )
     def post(self):
-        response = Response(status=500)
-        # Create temporary directory
-        tmp_dir = _create_temp_dir()
-        target_tmp_dir = _create_temp_dir()
+        if request.mimetype != "application/json":
+            return _error_response(415, "Expected application/json")
         try:
-            if tmp_dir is None:
-                raise IOError("Could not create temporary directory " + tmp_dir)
-            if not request.mimetype == "application/json":
-                raise TypeError("Incorrect media type received. Got " + request.mimetype +
-                                ", expected application/json")
-            else:
-                # Write request data to file
+            with _temporary_directory() as tmp_dir:
                 file_path = _write_request_data(request, tmp_dir, 'in.json')
-                if file_path is None:
-                    raise IOError("Could not create temporary file " + file_path)
-                with open(file_path) as json_fp:
-                    with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_fp:
-                        json2sampletab.convert(json_fp, st_fp)
-                with open(os.path.join(tmp_dir, 'out.txt'), 'r') as st_fp:
-                    payload = st_fp.read()
-                    response = Response(
-                        payload, mimetype='text/tab-separated-values'
-                    )
-        except TypeError as t:
-            print("TypeError: {}".format(t))
-            response = Response(status=415)
-        except Exception as e:
-            print("Error: {}".format(e))
-            response = Response(status=500)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            shutil.rmtree(target_tmp_dir, ignore_errors=True)
-            return response
+                output_path = os.path.join(tmp_dir, 'out.txt')
+                with open(file_path) as json_fp, open(output_path, 'w') as output_file:
+                    json2sampletab.convert(json_fp, output_file)
+                with open(output_path) as output_file:
+                    return Response(output_file.read(), mimetype='text/tab-separated-values')
+        except Exception:
+            return _conversion_error("Could not convert ISA JSON to SampleTab")
 
 
 class ConvertIsaTabToSampleTab(Resource):
@@ -746,41 +591,27 @@ class ConvertIsaTabToSampleTab(Resource):
         ]
     )
     def post(self):
-        response = Response(status=500)
-        # Create temporary directory
-        tmp_dir = _create_temp_dir()
-        target_tmp_dir = _create_temp_dir()
+        if request.mimetype != "application/zip":
+            return _error_response(415, "Expected application/zip")
         try:
-            if tmp_dir is None:
-                raise IOError("Could not create temporary directory.")
-            if not request.mimetype == "application/zip":
-                raise TypeError("Incorrect media type received. Got " + request.mimetype +
-                                ", expected application/zip")
-            else:
-                # Write request data to file
-                file_path = _write_request_data(request, tmp_dir, 'in.zip')
-                if file_path is None:
-                    raise IOError("Could not create temporary file.")
-                with zipfile.ZipFile(file_path, 'r') as z:
-                    # extract ISArchive files
-                    z.extractall(tmp_dir)
-                    i_file_list = [i.filename for i in z.filelist if 'i_' in i.filename and i.filename.endswith('.txt')]
-                    if len(i_file_list) == 1:
-                        src_file_path = os.path.normpath(os.path.join(tmp_dir, i_file_list[0]))
-                        with open(src_file_path) as fp:
-                            with open(os.path.join(tmp_dir, 'out.txt'), 'w') as st_out_fp:
-                                isatab2sampletab.convert(fp, st_out_fp)
-                        response = send_file(os.path.join(tmp_dir, 'out.txt'), mimetype='text/tab-separated-values')
-        except TypeError as t:
-            print("TypeError: {}".format(t))
-            response = Response(status=415)
-        except Exception as e:
-            print("Error: {}".format(e))
-            response = Response(status=500)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            shutil.rmtree(target_tmp_dir, ignore_errors=True)
-            return response
+            with _temporary_directory() as tmp_dir:
+                _, extracted_files = _extract_request_archive(request, tmp_dir, ISA_TAB_EXTENSIONS)
+                investigation_files = [
+                    path for path in extracted_files
+                    if os.path.basename(path).startswith('i_') and path.endswith('.txt')
+                ]
+                if len(investigation_files) != 1:
+                    raise InvalidArchive("Archive must contain exactly one investigation file")
+                output_path = os.path.join(tmp_dir, 'out.txt')
+                with open(investigation_files[0]) as input_file, open(output_path, 'w') as output_file:
+                    isatab2sampletab.convert(input_file, output_file)
+                with open(output_path, 'rb') as output_file:
+                    payload = io.BytesIO(output_file.read())
+                return send_file(payload, mimetype='text/tab-separated-values')
+        except InvalidArchive as error:
+            return _error_response(400, str(error))
+        except Exception:
+            return _conversion_error("Could not convert ISA-Tab to SampleTab")
 
 
 class ConvertMageTabToJson(Resource):
@@ -812,48 +643,32 @@ class ConvertMageTabToJson(Resource):
         ]
     )
     def post(self):
-        response = Response(status=415)
-        if request.mimetype == "application/zip":
-            tmp_dir = None
-            tmp_file = None
-            J = None
-            try:
-                # Write request data to file
-                tmp_file = str(uuid.uuid4()) + ".zip"
-                file_path = _write_request_data(request, config.UPLOAD_FOLDER, tmp_file)
-                if file_path is None:
-                    return Response(500)
-                # Extract ISArchive files
-                with zipfile.ZipFile(file_path, 'r') as z:
-                    # Create temporary directory
-                    tmp_dir = _create_temp_dir()
-                    if tmp_dir is None:
-                        return Response(500)
-                    z.extractall(tmp_dir)
-                    # Convert
-                    src_dir = os.path.normpath(tmp_dir)
-                    files = [f for f in os.listdir(src_dir) if f.endswith('.idf.txt')]
-                    if len(files) == 1:
-                        J = magetab2json.convert(os.path.join(src_dir, files[0]))
-                    if J is None:
-                        raise IOError("Could not generate JSON from input MAGE-TAB")
-            except Exception as e:
-                print("Error: {}".format(e))
-                return Response(status=500)
-            finally:
-                # cleanup generated directories
-                try:
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                    os.remove(os.path.join(config.UPLOAD_FOLDER, tmp_file))
-                except:
-                    pass
-            response = jsonify(J)
-        return response
+        if request.mimetype != "application/zip":
+            return _error_response(415, "Expected application/zip")
+        try:
+            with _temporary_directory() as tmp_dir:
+                _, extracted_files = _extract_request_archive(request, tmp_dir, MAGE_TAB_EXTENSIONS)
+                idf_files = [path for path in extracted_files if path.endswith('.idf.txt')]
+                if len(idf_files) != 1:
+                    raise InvalidArchive("Archive must contain exactly one IDF file")
+                result = magetab2json.convert(idf_files[0])
+                if result is None:
+                    raise IOError("Could not generate JSON from input MAGE-TAB")
+                return jsonify(result)
+        except InvalidArchive as error:
+            return _error_response(400, str(error))
+        except Exception:
+            return _conversion_error("Could not convert MAGE-TAB to JSON")
 
 
 app = Flask(__name__)
 app.config.from_object(config)
 cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_request_too_large(_error):
+    return _error_response(413, "Request exceeds the permitted size")
 
 api = swagger.docs(Api(app), apiVersion='0.8')
 api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
