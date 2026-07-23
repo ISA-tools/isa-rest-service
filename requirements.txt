@@ -1,7 +1,5 @@
-wheel~=0.36.2
--e git+https://github.com/rantav/flask-restful-swagger#egg=flask_restful_swagger
-isatools @ git+https://github.com/ISA-tools/isa-api.git@45cd955b4051caa6a8e08b2952e31f2d750a2d6f
-Flask~=1.1.2
-MarkupSafe<2.1
-requests~=2.25.1
-Flask-Cors~=3.0.10
+isatools @ git+https://github.com/ISA-tools/isa-api.git@1f67f4d379506fb21a628f478ada8274e2f1671c
+Flask~=3.1.3
+Flask-RESTX~=1.3.2
+Flask-Cors~=6.0.5
+requests~=2.32.4

@@ -8,15 +8,10 @@ permissions:
   contents: read
 
 jobs:
-  python-314-baseline:
-    name: Python 3.14 migration baseline
+  python-314-dependencies:
+    name: Python 3.14 dependency checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # This records the remaining legacy Flask/Swagger blockers without making
-    # the existing Python 3.9 test gate unusable. Remove this once Phase 3
-    # completes the REST framework migration.
-    continue-on-error: true
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -42,8 +37,7 @@ jobs:
           modules = (
               "flask",
               "flask_cors",
-              "flask_restful",
-              "flask_restful_swagger",
+              "flask_restx",
               "requests",
               "isatools",
               "isatools.convert",
@@ -74,10 +68,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.9'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: |
-            requirements-historical.txt
+            requirements.txt
             requirements-dev.txt
 
       - name: Install dependencies

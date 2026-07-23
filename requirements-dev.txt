@@ -1,4 +1,4 @@
--r requirements-historical.txt
+-r requirements.txt
 
-# Last coverage.py release supporting both Python 3.9 and Python 3.14.
+# Coverage gate for the Python 3.14 service suite.
 coverage==7.10.7

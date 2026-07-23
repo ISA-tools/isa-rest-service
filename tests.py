@@ -392,6 +392,90 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(dict(os.environ), original_environment)
 
 
+class ApiDocumentationTests(unittest.TestCase):
+
+    EXPECTED_PATHS = {
+        '/convert/tab-to-json',
+        '/convert/json-to-tab',
+        '/convert/tab-to-sra',
+        '/convert/json-to-sra',
+        '/convert/tab-to-cedar',
+        '/convert/sampletab-to-isatab',
+        '/convert/sampletab-to-json',
+        '/convert/json-to-sampletab',
+        '/convert/isatab-to-sampletab',
+        '/convert/magetab-to-json',
+        '/validate/json',
+        '/validate/isatab',
+        '/import/mw/{studyid}',
+        '/isa-study-from-design',
+    }
+
+    def test_swagger_spec_documents_all_existing_routes_and_request_model(self):
+        response = app.test_client().get('/api/v1/swagger.json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, 'application/json')
+        specification = response.get_json()
+        self.assertEqual(specification['swagger'], '2.0')
+        self.assertEqual(specification['basePath'], '/api/v1')
+        self.assertEqual(set(specification['paths']), self.EXPECTED_PATHS)
+        self.assertEqual(
+            {tag['name'] for tag in specification['tags']},
+            {'convert', 'validate', 'import', 'study-design'}
+        )
+
+        request_model = specification['definitions']['StudyDesignRequest']
+        self.assertEqual(request_model['required'], ['studyDesignConfig'])
+        self.assertEqual(
+            request_model['properties']['responseFormat']['enum'],
+            ['json', 'tab', 'all']
+        )
+        operation = specification['paths']['/isa-study-from-design']['post']
+        body_parameters = [
+            parameter for parameter in operation['parameters']
+            if parameter['in'] == 'body'
+        ]
+        self.assertEqual(len(body_parameters), 1)
+        self.assertEqual(
+            body_parameters[0]['schema']['$ref'],
+            '#/definitions/StudyDesignRequest'
+        )
+        import_operation = specification[
+            'paths'
+        ]['/import/mw/{studyid}']['get']
+        self.assertEqual(import_operation.get('parameters', []), [])
+        self.assertEqual(
+            specification['paths']['/import/mw/{studyid}']['parameters'],
+            [{
+                'name': 'studyid',
+                'in': 'path',
+                'required': True,
+                'type': 'string'
+            }]
+        )
+
+    def test_swagger_ui_and_application_factory(self):
+        documentation = app.test_client().get('/docs')
+        self.assertEqual(documentation.status_code, 200)
+        self.assertEqual(documentation.mimetype, 'text/html')
+        self.assertIn(b'id="swagger-ui"', documentation.data)
+        self.assertIn(b'url: "/api/v1/swagger.json"', documentation.data)
+
+        configured_app = service.create_app({
+            'TESTING': True,
+            'MAX_CONTENT_LENGTH': 1234
+        })
+        self.assertTrue(configured_app.config['TESTING'])
+        self.assertEqual(configured_app.config['MAX_CONTENT_LENGTH'], 1234)
+        self.assertEqual(
+            configured_app.test_client().get(
+                '/api/v1/swagger.json'
+            ).status_code,
+            200
+        )
+
+
 class IsaRestClientTests(unittest.TestCase):
 
     BASE_URL = 'https://isa.example.test'
@@ -1222,7 +1306,10 @@ class StudyDesignEndpointTests(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 validate.assert_called_once_with(self.DESIGN)
-                generate.assert_called_once_with(self.DESIGN)
+                generate.assert_called_once_with({
+                    **self.DESIGN,
+                    'design': self.DESIGN
+                })
                 generated_study.generate_isa_study.assert_called_once_with()
                 investigation_class.assert_called_once_with(studies=['isa-study'])
 
