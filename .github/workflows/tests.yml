@@ -21,12 +21,14 @@ jobs:
         with:
           python-version: '3.14'
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements.lock
 
       - name: Check dependency resolution with binary distributions
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --dry-run --ignore-installed --only-binary=:all: -r requirements.txt
+          python -m pip install --dry-run --ignore-installed --only-binary=:all: -r requirements.lock
 
       - name: Smoke-test direct package imports
         if: ${{ always() }}
@@ -73,6 +75,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements.txt
+            requirements.lock
             requirements-dev.txt
 
       - name: Install dependencies
@@ -81,7 +84,12 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
-        run: python -m coverage run -m unittest tests
+        run: >-
+          python
+          -W error::ResourceWarning
+          -W error::DeprecationWarning
+          -W "default:Deprecated call to:DeprecationWarning"
+          -m coverage run -m unittest tests
 
       - name: Enforce 100% coverage
         run: python -m coverage report -m

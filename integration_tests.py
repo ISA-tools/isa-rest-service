@@ -1,3 +1,4 @@
+import os
 import unittest
 
 from isarest import app
@@ -5,6 +6,10 @@ from isarest import app
 
 class MetabolomicsWorkbenchIntegrationTest(unittest.TestCase):
 
+    @unittest.skipUnless(
+        os.environ.get('RUN_LIVE_INTEGRATION') == '1',
+        'set RUN_LIVE_INTEGRATION=1 to call Metabolomics Workbench'
+    )
     def test_import_mw2isatab_live(self):
         response = app.test_client().get(path='/api/v1/import/mw/ST000367')
 

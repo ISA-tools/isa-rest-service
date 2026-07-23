@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools>=77,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isa-rest-service"
+version = "1.0.0"
+description = "REST service for ISA metadata conversion and validation"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = { file = "LICENSE.txt" }

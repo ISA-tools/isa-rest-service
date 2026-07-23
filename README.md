@@ -95,7 +95,9 @@ Dockerfile `MAINTAINER` instruction is represented by the OCI
 `org.opencontainers.image.authors` label. It names the ISA team, which is
 currently responsible for the image. A project-scoped
 `uk.ac.ox.oerc.isa-rest-service.ai-assisted` label records the involvement of
-OpenAI Codex.
+OpenAI Codex. Production installation uses the fully pinned
+`requirements.lock`; `requirements.txt` records the direct dependency policy
+used when deliberately updating that lock.
 
 ### Install and operate the user service
 
@@ -154,13 +156,31 @@ Run the test suite with branch coverage enabled:
 The report command enforces 100% statement and branch coverage and exits with
 an error if coverage regresses.
 
+Resource warnings and service-owned deprecations are treated as errors.
+PyFilesystem 2.4.16 still emits its known
+`pkg_resources.declare_namespace` deprecation during import; that exact warning
+remains visible, while `requirements.lock` keeps Setuptools below the release
+that removes the API.
+
 An HTML report can be generated with `python -m coverage html` and opened from
 `htmlcov/index.html`.
+
+Build and run the container test target to exercise the complete suite against
+the same runtime and exact dependency set as the production image:
+
+    podman build --target test --tag localhost/isa-rest-service:test .
+    podman run --rm localhost/isa-rest-service:test
 
 The normal suite mocks the external Metabolomics Workbench service. Run its
 live integration check separately when network access is intended:
 
-    python -m unittest integration_tests
+    RUN_LIVE_INTEGRATION=1 python -m unittest integration_tests
+
+The same opt-in check can be run from the test image:
+
+    podman run --rm --env RUN_LIVE_INTEGRATION=1 \
+        localhost/isa-rest-service:test \
+        python -m unittest integration_tests
 
 Contributing
 ------------

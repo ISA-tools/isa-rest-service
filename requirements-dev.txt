@@ -1,4 +1,4 @@
--r requirements.txt
+-r requirements.lock
 
 # Coverage gate for the Python 3.14 service suite.
 coverage==7.10.7
