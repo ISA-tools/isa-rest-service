@@ -25,13 +25,12 @@ jobs:
             requirements.txt
             requirements.lock
 
-      - name: Check dependency resolution with binary distributions
+      - name: Install dependencies with binary distributions
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --dry-run --ignore-installed --only-binary=:all: -r requirements.lock
+          python -m pip install --only-binary=:all: -r requirements.lock
 
       - name: Smoke-test direct package imports
-        if: ${{ always() }}
         run: |
           python - <<'PY'
           import importlib
