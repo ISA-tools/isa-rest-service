@@ -16,7 +16,7 @@ To find out more about ISA, see [www.isa-tools.org](http://www.isa-tools.org)
 To find out who's using ISA and about the ISA development and user community, see [www.isacommons.org](http://www.isacommons.org)
 
 ----
-*Authors*: [The ISA team](http://www.isa-tools.org/team/).
+*Authors*: [The ISA team](http://www.isa-tools.org/team/), Philippe Rocca-Serra <philippe.rocca-serra@oerc.ox.ac.uk>, Milo Thurston <milo.thurston@oerc.ox.ac.uk>.
 
 *Original author*: David Johnson.
 
