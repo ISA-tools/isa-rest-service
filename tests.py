@@ -418,6 +418,7 @@ class ApiDocumentationTests(unittest.TestCase):
         self.assertEqual(response.mimetype, 'application/json')
         specification = response.get_json()
         self.assertEqual(specification['swagger'], '2.0')
+        self.assertEqual(specification['info']['version'], '1.0.0')
         self.assertEqual(specification['basePath'], '/api/v1')
         self.assertEqual(set(specification['paths']), self.EXPECTED_PATHS)
         self.assertEqual(

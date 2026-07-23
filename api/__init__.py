@@ -57,7 +57,7 @@ def document_operation(
 def build_api(app):
     api = Api(
         app,
-        version='1.0',
+        version='1.0.0',
         title='ISA REST Service',
         description='Convert, validate, import, and generate ISA metadata.',
         prefix=API_PREFIX,

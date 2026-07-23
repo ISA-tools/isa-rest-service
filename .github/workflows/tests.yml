@@ -38,6 +38,7 @@ jobs:
               "flask",
               "flask_cors",
               "flask_restx",
+              "gunicorn",
               "requests",
               "isatools",
               "isatools.convert",
