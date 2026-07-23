@@ -8,6 +8,59 @@ permissions:
   contents: read
 
 jobs:
+  python-314-baseline:
+    name: Python 3.14 migration baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Phase 1 records the known dependency/import blockers without making the
+    # existing Python 3.9 test gate unusable. Remove this once Phase 2 resolves
+    # the ISA dependency graph.
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Check dependency resolution with binary distributions
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --dry-run --ignore-installed --only-binary=:all: -r requirements.txt
+
+      - name: Smoke-test direct package imports
+        if: ${{ always() }}
+        run: |
+          python - <<'PY'
+          import importlib
+
+          modules = (
+              "flask",
+              "flask_cors",
+              "flask_restful",
+              "flask_restful_swagger",
+              "requests",
+              "isatools",
+              "isatools.convert",
+              "isatools.convert.isatab2cedar",
+              "isatools.create.connectors",
+              "isatools.net",
+          )
+          for module in modules:
+              importlib.import_module(module)
+          PY
+
+      - name: Parse service sources
+        if: ${{ always() }}
+        run: >-
+          python -m compileall -q
+          isarest.py isarest_client.py config.py api tests.py integration_tests.py
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
