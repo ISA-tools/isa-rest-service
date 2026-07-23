@@ -182,6 +182,170 @@ The same opt-in check can be run from the test image:
         localhost/isa-rest-service:test \
         python -m unittest integration_tests
 
+Appendix: macOS deployment with launchd
+---------------------------------------
+macOS cannot run the Linux image directly. Podman therefore runs it inside a
+rootless Linux virtual machine managed by Podman Machine. A per-user
+`launchd` agent can provide lifecycle management analogous to the systemd user
+service on Linux.
+
+This deployment starts after the selected macOS user logs in; it is not a
+pre-login system service. Use a dedicated login account for an unattended Mac,
+and configure the host not to sleep while serving requests.
+
+### Prepare Podman Machine and the image
+
+Install Podman, initialise its default virtual machine, and build the image as
+the macOS user that will operate the service:
+
+    brew install podman
+    podman machine init --now
+    podman build --target production \
+        --tag localhost/isa-rest-service:1.0.0 .
+
+Podman Machine stores images inside its Linux VM. Rebuild or pull the image
+through the same macOS account and machine connection used by the agent.
+
+### Create the service wrapper
+
+Create these user-owned directories:
+
+    mkdir -p "$HOME/Library/Application Support/ISA REST Service"
+    mkdir -p "$HOME/Library/Logs/ISA REST Service"
+
+Save the following as
+`~/Library/Application Support/ISA REST Service/run.sh`:
+
+```zsh
+#!/bin/zsh
+set -u
+
+# This is the default Homebrew path on Apple Silicon. Intel Macs normally use
+# /usr/local/bin/podman instead.
+PODMAN=/opt/homebrew/bin/podman
+MACHINE=podman-machine-default
+CONTAINER=isa-rest-service
+IMAGE=localhost/isa-rest-service:1.0.0
+stopping=0
+
+cleanup() {
+    if (( stopping == 0 )); then
+        stopping=1
+        "$PODMAN" stop --ignore --time 60 "$CONTAINER"
+        "$PODMAN" rm --force --ignore "$CONTAINER"
+    fi
+}
+
+trap 'cleanup; exit 0' INT TERM
+trap cleanup EXIT
+
+if ! "$PODMAN" info >/dev/null 2>&1; then
+    "$PODMAN" machine start --quiet "$MACHINE"
+fi
+
+"$PODMAN" rm --force --ignore "$CONTAINER"
+"$PODMAN" run --detach \
+    --name "$CONTAINER" \
+    --pull=never \
+    --read-only \
+    --tmpfs /tmp:rw,nosuid,nodev,noexec,size=1g \
+    --publish 127.0.0.1:5000:5000 \
+    --env ENVIRONMENT=production \
+    --security-opt=no-new-privileges \
+    --cap-drop=all \
+    --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/v1/swagger.json', timeout=5).read()\"" \
+    --health-interval=30s \
+    --health-timeout=10s \
+    --health-start-period=20s \
+    --health-retries=3 \
+    --health-on-failure=kill \
+    "$IMAGE"
+
+"$PODMAN" wait "$CONTAINER" &
+wait_pid=$!
+wait "$wait_pid"
+```
+
+Make the wrapper executable:
+
+    chmod 0755 "$HOME/Library/Application Support/ISA REST Service/run.sh"
+
+The wrapper starts Podman Machine when necessary, replaces a stale service
+container, waits for the new container, and stops and removes it when
+`launchd` terminates the job. Confirm the `PODMAN` path before installing the
+agent.
+
+### Install the user LaunchAgent
+
+Save the following as
+`~/Library/LaunchAgents/org.isa-tools.isa-rest-service.plist`, replacing every
+`YOUR_ACCOUNT` component with the macOS account name. `launchd` does not expand
+shell variables or `~` in these paths.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>org.isa-tools.isa-rest-service</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/YOUR_ACCOUNT/Library/Application Support/ISA REST Service/run.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_ACCOUNT/Library/Logs/ISA REST Service/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_ACCOUNT/Library/Logs/ISA REST Service/stderr.log</string>
+</dict>
+</plist>
+```
+
+Load and start the agent in the current graphical user session:
+
+    launchctl bootstrap "gui/$(id -u)" \
+        "$HOME/Library/LaunchAgents/org.isa-tools.isa-rest-service.plist"
+    launchctl enable \
+        "gui/$(id -u)/org.isa-tools.isa-rest-service"
+    launchctl kickstart -k \
+        "gui/$(id -u)/org.isa-tools.isa-rest-service"
+
+Inspect the agent, container, health check, and logs with:
+
+    launchctl print "gui/$(id -u)/org.isa-tools.isa-rest-service"
+    podman ps --filter name=isa-rest-service
+    podman inspect isa-rest-service
+    podman healthcheck run isa-rest-service
+    tail -F "$HOME/Library/Logs/ISA REST Service/stdout.log" \
+        "$HOME/Library/Logs/ISA REST Service/stderr.log"
+
+After rebuilding the `1.0.0` image, restart the agent so it creates a container
+from the replacement image:
+
+    launchctl kickstart -k \
+        "gui/$(id -u)/org.isa-tools.isa-rest-service"
+
+To stop and unload the agent:
+
+    launchctl bootout "gui/$(id -u)" \
+        "$HOME/Library/LaunchAgents/org.isa-tools.isa-rest-service.plist"
+
+The API remains bound to `127.0.0.1:5000`. As on Linux, public exposure and TLS
+should normally be provided by a separately managed reverse proxy.
+
 Contributing
 ------------
 We would be very happy to receive any help and contributions (testing, feature requests, pull requests). Please feel free to contact our development team, ask a question, report a bug or file a feature request in the Github issue tracker, or fork our repository.
