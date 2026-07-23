@@ -39,6 +39,11 @@ Using the ISA REST service
 --------------------------
 Python 3.14 and Git are required. For a local development environment:
 
+The locked dependency set and deployment have been checked on Linux only.
+Other operating systems should not be treated as supported until the lock
+installs successfully and the complete test suite passes on the relevant
+operating-system and processor combination.
+
     python3.14 -m venv .venv
     . .venv/bin/activate
     python -m pip install --upgrade pip
@@ -345,6 +350,119 @@ To stop and unload the agent:
 
 The API remains bound to `127.0.0.1:5000`. As on Linux, public exposure and TLS
 should normally be provided by a separately managed reverse proxy.
+
+Appendix: native Gunicorn and Nginx deployment
+----------------------------------------------
+The service can run directly from a Python virtual environment without
+Podman. Gunicorn serves the application on the loopback interface and Nginx
+handles client connections and TLS. This removes the container boundary, so
+the service account, virtual environment, source tree, temporary storage, and
+process supervision become host responsibilities.
+
+The dependency warning above applies in particular to this deployment: the
+current lock has been verified on Linux only. Before using this arrangement on
+macOS or another platform, install the lock in a clean environment and run the
+complete suite on every processor architecture that will be supported.
+
+### Install the native application
+
+Use a dedicated account and an absolute deployment path. The following
+commands use `/absolute/path/to/isa-rest-service` as a placeholder:
+
+    cd /absolute/path/to/isa-rest-service
+    python3.14 -m venv .venv
+    . .venv/bin/activate
+    python -m pip install --upgrade pip
+    python -m pip install --requirement requirements.lock
+    ENVIRONMENT=production gunicorn --check-config \
+        'isarest:create_app()'
+
+The service writes temporary request and conversion data beneath
+`UPLOAD_FOLDER`, which defaults to `/tmp`. Ensure that the service account can
+write there and that the filesystem has enough capacity for request bodies and
+expanded archives. The default request-body limit is 32 MiB and the default
+expanded-archive limit is 256 MiB.
+
+The production Gunicorn command is:
+
+    ENVIRONMENT=production \
+    /absolute/path/to/isa-rest-service/.venv/bin/gunicorn \
+        --chdir /absolute/path/to/isa-rest-service \
+        --bind 127.0.0.1:5000 \
+        --workers 1 \
+        --threads 4 \
+        --timeout 300 \
+        --graceful-timeout 60 \
+        --access-logfile - \
+        --error-logfile - \
+        'isarest:create_app()'
+
+Run this command under a process supervisor rather than leaving it attached to
+an interactive terminal. On Linux, use a systemd service with the command
+above as `ExecStart`. On macOS, use a per-user LaunchAgent with the Gunicorn
+arguments as its `ProgramArguments`, `ENVIRONMENT=production` under
+`EnvironmentVariables`, and the repository path as `WorkingDirectory`.
+
+### Configure Nginx
+
+The following server configuration redirects clear-text requests to HTTPS and
+proxies HTTPS traffic to Gunicorn. Replace the server name and certificate
+paths:
+
+```nginx
+upstream isa_rest_service {
+    server 127.0.0.1:5000;
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    server_name isa.example.org;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name isa.example.org;
+
+    ssl_certificate /absolute/path/to/fullchain.pem;
+    ssl_certificate_key /absolute/path/to/private-key.pem;
+
+    # Keep this aligned with MAX_CONTENT_LENGTH.
+    client_max_body_size 32m;
+
+    location / {
+        proxy_pass http://isa_rest_service;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 310s;
+        proxy_read_timeout 310s;
+    }
+}
+```
+
+On Linux this can normally be installed beneath `/etc/nginx/conf.d` or the
+distribution's `sites-available` directory. Homebrew Nginx normally reads its
+configuration beneath `/opt/homebrew/etc/nginx` on Apple Silicon or
+`/usr/local/etc/nginx` on Intel Macs. Confirm the active configuration path
+with the locally installed Nginx package.
+
+Validate the Nginx configuration before reloading it. Once Gunicorn and Nginx
+are running, check:
+
+    curl --fail https://isa.example.org/docs
+    curl --fail https://isa.example.org/api/v1/swagger.json
+
+When deploying a new application version, install and test its dependencies,
+stop accepting new work, restart the supervised Gunicorn process, and verify
+both URLs. Nginx can normally remain running while the local upstream
+restarts.
 
 Contributing
 ------------
