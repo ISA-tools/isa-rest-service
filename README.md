@@ -93,7 +93,7 @@ storage is user-specific:
     podman build --pull=always \
         --tag localhost/isa-rest-service:1.0.0 .
 
-The Containerfile uses an exact Python 3.14 slim base and a separate build
+The `Containerfile` uses an exact Python 3.14 slim base and a separate build
 stage. Git is present only while installing the pinned isatools commit; the
 runtime image contains neither Git nor compiler tooling. The deprecated
 Dockerfile `MAINTAINER` instruction is represented by the OCI
@@ -210,6 +210,10 @@ the macOS user that will operate the service:
 
 Podman Machine stores images inside its Linux VM. Rebuild or pull the image
 through the same macOS account and machine connection used by the agent.
+
+**note**. One may have to disable MacOS 'AirPlay' from System Preferences > Airdrop & Continuity, to free port 5000 for the service.
+Otherwise, the agent will fail to start the container with a port conflict.
+
 
 ### Create the service wrapper
 
