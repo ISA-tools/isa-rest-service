@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.venv
+.venv39
+__pycache__
+*.py[cod]
+.coverage
+.coverage.*
+coverage.xml
+htmlcov
+build_error.txt
+corrections.txt
+coverage_increase.txt
+migration.txt

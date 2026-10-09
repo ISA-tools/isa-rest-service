@@ -5,8 +5,7 @@ import zipfile
 from tempfile import TemporaryDirectory
 
 from flask import Flask, Response, current_app, request, jsonify, send_file
-from flask_restful import Api, Resource
-from flask_restful_swagger import swagger
+from flask_restx import Resource
 from flask_cors import CORS
 from werkzeug.exceptions import RequestEntityTooLarge
 import config
@@ -17,6 +16,10 @@ from isatools.net import mw2isa
 from isatools.convert.isatab2cedar import ISATab2CEDAR
 from isatools import isajson, isatab
 
+from api import (
+    build_api, conversion_namespace, document_operation, import_namespace,
+    study_namespace, validation_namespace
+)
 from api.create import ISAStudyDesign
 from api.archive import InvalidArchive, extract_validated_zip
 
@@ -91,7 +94,8 @@ def _conversion_error(message):
 class ConvertTabToJson(Resource):
 
     """Convert to ISA- tab (zip) to ISA-JSON"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert ISA tab to JSON',
         notes='Converts a ZIP file containing a collection of ISA tab files to ISA-JSON',
         parameters=[
@@ -135,7 +139,8 @@ class ConvertTabToJson(Resource):
 class ConvertJsonToTab(Resource):
 
     """Convert to ISA-JSON to ISA tab (zip)"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert JSON to ISA tab (zip)',
         notes='Converts an ISA-JSON file to ISA tab set of files as a zip file',
         parameters=[
@@ -177,7 +182,8 @@ class ConvertJsonToTab(Resource):
 class ConvertTabToSra(Resource):
 
     """Convert to ISA tab (zip) to SRA XML (zip)"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert ISA tab to SRA',
         notes='Converts a ZIP file containing a collection of ISA-Tab files to ISA-JSON',
         parameters=[
@@ -219,7 +225,8 @@ class ConvertTabToSra(Resource):
 class ConvertJsonToSra(Resource):
 
     """Convert to ISA tab (zip) to SRA XML (zip)"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert ISA JSON to SRA',
         notes='Converts a ISA JSON file with data (ZIP) to SRA XML files (ZIP)',
         parameters=[
@@ -265,7 +272,8 @@ class ConvertJsonToSra(Resource):
 class ConvertTabToCedar(Resource):
 
     """Convert to ISA tab (zip) to CEDAR JSON"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert ISA tab to JSON',
         notes='Converts a ZIP file containing a collection of ISA tab files to CEDAR JSON',
         parameters=[
@@ -313,7 +321,8 @@ class ValidateIsaJSON(Resource):
 
     """Validate an ISA JSON document"""
 
-    @swagger.operation(
+    @document_operation(
+        validation_namespace,
         summary='Validate ISA JSON',
         notes='Validates a ZIP file containing a ISA JSON file and data files',
         parameters=[
@@ -355,7 +364,8 @@ class ValidateIsaTab(Resource):
 
     """Validate an ISA tab document"""
 
-    @swagger.operation(
+    @document_operation(
+        validation_namespace,
         summary='Validate ISA tab',
         notes='Validates a ZIP file containing ISA tab files',
         parameters=[
@@ -404,17 +414,10 @@ class ValidateIsaTab(Resource):
 class ImportMWToIsaTab(Resource):
 
     """Convert to ISA tab (zip) to SRA XML (zip)"""
-    @swagger.operation(
+    @document_operation(
+        import_namespace,
         summary='Import from Metabolomics Workbench to ISA-Tab',
         notes='Imports a study from Metabolomics Workbench to ISA-Tab',
-        parameters=[
-            {
-                "name": "studyid",
-                "description": "Study ID",
-                "type": "String",
-                "required": True
-            }
-        ],
         responseMessages=[
             {
                 "code": 200,
@@ -438,7 +441,8 @@ class ImportMWToIsaTab(Resource):
 class ConvertSampleTabToIsaTab(Resource):
 
     """Convert SampleTab to ISA-Tab"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert SampleTab to ISA-Tab',
         notes='Converts a SampleTab to a set of ISA-Tab files (ZIP)',
         parameters=[
@@ -479,7 +483,8 @@ class ConvertSampleTabToIsaTab(Resource):
 class ConvertSampleTabToJson(Resource):
 
     """Convert SampleTab to ISA-JSON"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert SampleTab to ISA-JSON',
         notes='Converts a SampleTab to a set of ISA-JSON',
         parameters=[
@@ -522,7 +527,8 @@ class ConvertSampleTabToJson(Resource):
 class ConvertJsonToSampleTab(Resource):
 
     """Convert to ISA-JSON to SampleTab"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert ISA-JSON to SampleTab',
         notes='Converts a ISA-JSON file to SampleTab',
         parameters=[
@@ -565,7 +571,8 @@ class ConvertJsonToSampleTab(Resource):
 class ConvertIsaTabToSampleTab(Resource):
 
     """Convert to ISA-JSON to SampleTab"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert ISA-Tab to SampleTab',
         notes='Converts a ISA-Tab file to SampleTab',
         parameters=[
@@ -617,7 +624,8 @@ class ConvertIsaTabToSampleTab(Resource):
 class ConvertMageTabToJson(Resource):
 
     """Convert MAGE-TAB (zip) to ISA-JSON"""
-    @swagger.operation(
+    @document_operation(
+        conversion_namespace,
         summary='Convert MAGE-TAB to JSON',
         notes='Converts a ZIP file containing a collection of MAGE-TAB files to ISA-JSON',
         parameters=[
@@ -661,30 +669,46 @@ class ConvertMageTabToJson(Resource):
             return _conversion_error("Could not convert MAGE-TAB to JSON")
 
 
-app = Flask(__name__)
-app.config.from_object(config)
-cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
-
-
-@app.errorhandler(RequestEntityTooLarge)
 def handle_request_too_large(_error):
     return _error_response(413, "Request exceeds the permitted size")
 
-api = swagger.docs(Api(app), apiVersion='0.8')
-api.add_resource(ConvertTabToJson, '/api/v1/convert/tab-to-json')
-api.add_resource(ConvertJsonToTab, '/api/v1/convert/json-to-tab')
-api.add_resource(ConvertTabToSra, '/api/v1/convert/tab-to-sra')
-api.add_resource(ConvertJsonToSra, '/api/v1/convert/json-to-sra')
-api.add_resource(ConvertTabToCedar, '/api/v1/convert/tab-to-cedar')
-api.add_resource(ValidateIsaJSON, '/api/v1/validate/json')
-api.add_resource(ValidateIsaTab, '/api/v1/validate/isatab')
-api.add_resource(ImportMWToIsaTab, '/api/v1/import/mw/<studyid>')
-api.add_resource(ConvertSampleTabToIsaTab, '/api/v1/convert/sampletab-to-isatab')
-api.add_resource(ConvertSampleTabToJson, '/api/v1/convert/sampletab-to-json')
-api.add_resource(ConvertJsonToSampleTab, '/api/v1/convert/json-to-sampletab')
-api.add_resource(ConvertIsaTabToSampleTab, '/api/v1/convert/isatab-to-sampletab')
-api.add_resource(ConvertMageTabToJson, '/api/v1/convert/magetab-to-json')
-api.add_resource(ISAStudyDesign, '/api/v1/isa-study-from-design')
+
+def _add_resource_once(namespace, resource, route):
+    """Register a route once when this module is re-executed by a test runner."""
+    if not any(route in registration.urls for registration in namespace.resources):
+        namespace.add_resource(resource, route)
+
+
+_add_resource_once(conversion_namespace, ConvertTabToJson, '/tab-to-json')
+_add_resource_once(conversion_namespace, ConvertJsonToTab, '/json-to-tab')
+_add_resource_once(conversion_namespace, ConvertTabToSra, '/tab-to-sra')
+_add_resource_once(conversion_namespace, ConvertJsonToSra, '/json-to-sra')
+_add_resource_once(conversion_namespace, ConvertTabToCedar, '/tab-to-cedar')
+_add_resource_once(conversion_namespace, ConvertSampleTabToIsaTab, '/sampletab-to-isatab')
+_add_resource_once(conversion_namespace, ConvertSampleTabToJson, '/sampletab-to-json')
+_add_resource_once(conversion_namespace, ConvertJsonToSampleTab, '/json-to-sampletab')
+_add_resource_once(conversion_namespace, ConvertIsaTabToSampleTab, '/isatab-to-sampletab')
+_add_resource_once(conversion_namespace, ConvertMageTabToJson, '/magetab-to-json')
+_add_resource_once(validation_namespace, ValidateIsaJSON, '/json')
+_add_resource_once(validation_namespace, ValidateIsaTab, '/isatab')
+_add_resource_once(import_namespace, ImportMWToIsaTab, '/mw/<studyid>')
+_add_resource_once(study_namespace, ISAStudyDesign, '/isa-study-from-design')
+
+
+def create_app(configuration=None):
+    application = Flask(__name__)
+    application.config.from_object(config)
+    if configuration:
+        application.config.update(configuration)
+    CORS(application, resources={r"/api/*": {"origins": "*"}})
+    application.register_error_handler(
+        RequestEntityTooLarge, handle_request_too_large
+    )
+    build_api(application)
+    return application
+
+
+app = create_app()
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=config.PORT, debug=config.DEBUG)

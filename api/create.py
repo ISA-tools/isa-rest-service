@@ -5,8 +5,7 @@ import os
 from tempfile import TemporaryDirectory
 
 from flask import current_app, request, jsonify, send_file
-from flask_restful import Resource
-from flask_restful_swagger import swagger
+from flask_restx import Resource, fields
 from werkzeug.exceptions import BadRequest
 from isatools.model import Investigation
 from isatools.create.connectors import generate_study_design
@@ -14,6 +13,7 @@ from isatools import isatab
 from isatools.isajson import ISAJSONEncoder
 from functools import reduce
 
+from api import document_operation, study_namespace
 from api.validation import MAX_SUBJECT_SIZE, MAX_ARMS, MAX_SAMPLE_SIZE, MAX_ASSAY_COMBINATIONS
 
 UNSUPPORTED_MIME_TYPE_ERROR = """
@@ -30,6 +30,18 @@ OUTPUT_JSON_FILE_NAME = 'investigation.json'
 CONTENT_TYPE_APPLICATION_ZIP = 'application/zip'
 CONTENT_TYPE_APPLICATION_JSON = 'application/json'
 SUPPORTED_RESPONSE_FORMATS = {'json', 'tab', 'all'}
+
+study_design_request = study_namespace.model('StudyDesignRequest', {
+    'studyDesignConfig': fields.Raw(
+        required=True,
+        description='Compact study design with arms, sampling, and assays.'
+    ),
+    'responseFormat': fields.String(
+        enum=['json', 'tab', 'all'],
+        default='tab',
+        description='Serialization format for the generated investigation.'
+    )
+})
 
 
 def _error_response(status, message, details=None):
@@ -68,7 +80,7 @@ def validate_design_config(config):
         for node in assay_type['workflow']:
             if '#replicates' in node:
                 combinations = reduce(
-                    lambda param, val: len(param["values"])*val,
+                    lambda total, param: total * len(param["values"]),
                     [val for key, val in node.items() if key != '#replicates'],
                     1
                 )
@@ -84,30 +96,11 @@ def validate_design_config(config):
 
 class ISAStudyDesign(Resource):
 
-    @swagger.operation(
+    @study_namespace.expect(study_design_request, validate=False)
+    @document_operation(
+        study_namespace,
         summary="Generate serialised Investigation out of study design config",
         notes="Generate serialised Investigation out of study design config",
-        parameters=[
-            {
-                "name": "studyDesignConfig",
-                "description": "the compact representation of a study Design, with arms, "
-                               "elements (treatments and non-treatments) "
-                               "and events (sampling and assay events)",
-                "required": True,
-                "allowedMultiple": False,
-                "dataType": "JSON",
-                "supportedContentTypes": ["application/json"],
-                "paramType": "body"
-            }, {
-                "name": "responseFormat",
-                "description": "either 'json', 'tab', 'json+tab'",
-                "required": False,
-                "allowedMultiple": False,
-                "dataType": "string",
-                "supportedContentTypes": ["application/json"],
-                "paramType": "body"
-            }
-        ],
         responseMessages=[
             {
                 "code": 200,
@@ -145,7 +138,10 @@ class ISAStudyDesign(Resource):
             validation_errors = validate_design_config(design_config)
             if validation_errors:
                 return _error_response(400, 'Invalid study design configuration', validation_errors)
-            study_design = generate_study_design(design_config)
+            study_design = generate_study_design({
+                **design_config,
+                'design': design_config
+            })
             investigation = Investigation(studies=[study_design.generate_isa_study()])
             if res_format == 'json':
                 return current_app.response_class(

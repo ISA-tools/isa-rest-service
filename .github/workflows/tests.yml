@@ -8,6 +8,55 @@ permissions:
   contents: read
 
 jobs:
+  python-314-dependencies:
+    name: Python 3.14 dependency checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements.lock
+
+      - name: Install dependencies with binary distributions
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --only-binary=:all: -r requirements.lock
+
+      - name: Smoke-test direct package imports
+        run: |
+          python - <<'PY'
+          import importlib
+
+          modules = (
+              "flask",
+              "flask_cors",
+              "flask_restx",
+              "gunicorn",
+              "requests",
+              "isatools",
+              "isatools.convert",
+              "isatools.convert.isatab2cedar",
+              "isatools.create.connectors",
+              "isatools.net",
+          )
+          for module in modules:
+              importlib.import_module(module)
+          PY
+
+      - name: Parse service sources
+        if: ${{ always() }}
+        run: >-
+          python -m compileall -q
+          isarest.py isarest_client.py config.py api tests.py integration_tests.py
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -21,10 +70,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.9'
+          python-version: '3.14'
           cache: pip
           cache-dependency-path: |
             requirements.txt
+            requirements.lock
             requirements-dev.txt
 
       - name: Install dependencies
@@ -33,10 +83,18 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Run tests with coverage
-        run: |
-          python -m coverage run -m unittest tests
-          python -m coverage report -m
-          python -m coverage xml
+        run: >-
+          python
+          -W error::ResourceWarning
+          -W error::DeprecationWarning
+          -W "default:Deprecated call to:DeprecationWarning"
+          -m coverage run -m unittest tests
+
+      - name: Enforce 100% coverage
+        run: python -m coverage report -m
+
+      - name: Generate coverage XML
+        run: python -m coverage xml
 
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2

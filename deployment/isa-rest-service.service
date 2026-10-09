@@ -1,0 +1,39 @@
+[Unit]
+Description=ISA REST Service rootless Podman container
+Documentation=https://github.com/ISA-tools/isa-rest-service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+Environment=PODMAN_SYSTEMD_UNIT=%n
+Environment=ISA_REST_IMAGE=localhost/isa-rest-service:1.0.0
+ExecStartPre=-/usr/bin/podman rm --force --ignore isa-rest-service
+ExecStart=/usr/bin/podman run \
+    --name isa-rest-service \
+    --sdnotify=conmon \
+    --pull=never \
+    --read-only \
+    --tmpfs /tmp:rw,nosuid,nodev,noexec,size=1g \
+    --publish 127.0.0.1:5000:5000 \
+    --env ENVIRONMENT=production \
+    --security-opt=no-new-privileges \
+    --cap-drop=all \
+    --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/v1/swagger.json', timeout=5).read()\"" \
+    --health-interval=30s \
+    --health-timeout=10s \
+    --health-start-period=20s \
+    --health-retries=3 \
+    --health-on-failure=kill \
+    ${ISA_REST_IMAGE}
+ExecStop=/usr/bin/podman stop --ignore --time 60 isa-rest-service
+ExecStopPost=-/usr/bin/podman rm --force --ignore isa-rest-service
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=75
+KillMode=none
+
+[Install]
+WantedBy=default.target
