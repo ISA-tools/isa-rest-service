@@ -407,6 +407,13 @@ above as `ExecStart`. On macOS, use a per-user LaunchAgent with the Gunicorn
 arguments as its `ProgramArguments`, `ENVIRONMENT=production` under
 `EnvironmentVariables`, and the repository path as `WorkingDirectory`.
 
+
+For testing purposes locally:
+
+```
+ENVIRONMENT=dev gunicorn --bind 127.0.0.1:5000 --reload 'isarest:create_app()'
+```
+
 ### Configure Nginx
 
 The following server configuration redirects clear-text requests to HTTPS and
